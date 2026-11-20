@@ -1,9 +1,9 @@
 {
   "name": "taskboard-dsh",
-  "version": "0.1.0-probe",
+  "version": "0.2.0-mvp",
   "private": true,
   "type": "module",
-  "description": "工单板的 DSH 插件（探针：连接账号 + SSE 未读 + 左栏面板计数 + 系统通知验证）",
+  "description": "工单板的 DSH 插件（MVP：三类筛选面板 + 标已读 + 断开 + 系统通知）",
   "main": "index.mjs",
   "exports": {
     ".": "./index.mjs",
