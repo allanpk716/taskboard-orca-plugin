@@ -651,6 +651,20 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
   // 叠加宿主 abort 会放大成 fatal load failure)。连接动作由面板「连接账号」
   // 按钮经 POST /api/taskboard/connect 触发——无人看面板就不监听端口。
 
+  // 诊断:cordis 在 plugin fiber dispose 时 emit 'internal/plugin'(fiber.ts
+  // emitPluginDisposed)——录下宿主 loader 的每次插件生命周期事件,定位
+  // "apply 后毫秒级 dispose"的发起者
+  if (typeof ctx.on === 'function') {
+    try {
+      ctx.on('internal/plugin', ((fiber: unknown) => {
+        const f = fiber as { uid: number | null; runtime?: { name?: string } } | null
+        fileLog('loader-event', `internal/plugin name=${f?.runtime?.name ?? '?'} uid=${String(f?.uid)}`)
+      }) as unknown as (...args: never[]) => unknown)
+    } catch (error) {
+      fileLog('diag', `internal/plugin 监听失败:${errorMessage(error)}`)
+    }
+  }
+
   // 保活:挂一个事件监听进 cordis(fiber 因此有活动资源而常驻,且不阻塞
   // 宿主 ready——ferryman-dsh 生产同款形态)。app-boot/config-reload 是宿主
   // 一定声明的事件(patch 重组时 emit),这里只需要"注册"这个动作本身。
