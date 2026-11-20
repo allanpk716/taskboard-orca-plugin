@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "taskboard",
   "name": "工单板",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "工单板的提醒和概览，工单内容在浏览器打开。",
   "engines": {
     "orca": ">=1.4.248"
