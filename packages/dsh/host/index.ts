@@ -16,7 +16,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { createServer, type ServerResponse } from 'node:http'
 import { hostname } from 'node:os'
 import { homedir } from 'node:os'
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   type PlatformHealthResult,
@@ -65,6 +65,16 @@ export interface ProbeState {
 }
 
 const STATE_FILE = join(homedir(), '.dsh', 'taskboard-plugin.json')
+const LOG_FILE = join(homedir(), '.dsh', 'taskboard-plugin.log')
+
+/** 探针文件日志(宿主 logger 用户不一定看得见;排查靠这个) */
+function fileLog(kind: string, detail: string): void {
+  try {
+    appendFileSync(LOG_FILE, `${new Date().toISOString()} [${kind}] ${detail}\n`, 'utf8')
+  } catch {
+    // 日志写不进就算了
+  }
+}
 const CONNECT_TIMEOUT_MS = 5 * 60_000
 const IDLE_TIMEOUT_MS = 90_000
 const RECONNECT_DELAYS_MS = [2_000, 5_000, 15_000, 60_000]
@@ -145,6 +155,7 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
   function pushEvent(kind: string, detail: string): void {
     probe.recentEvents.unshift({ at: new Date().toISOString(), kind, detail })
     probe.recentEvents.length = Math.min(probe.recentEvents.length, RECENT_EVENT_CAP)
+    fileLog(kind, detail)
   }
 
   // ---- SSE 通知流（Orca worker.ts runStream 移植，通知呈现改为 pushEvent） ----
@@ -553,8 +564,20 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
     })
   }
 
-  const webServer = ctx.get?.('webServer') as WebServerLike | undefined
-  if (webServer !== undefined && typeof webServer.register === 'function') {
+  // ---- webServer 路由（client 轮询面；ferryman 实测同源 cookie 可用） ----
+  // 全新启动的宿主里插件可能早于 webServer 服务就绪(2026-11-20 train3060 实测:
+  // 热重载态 200、重启后 404),所以探测失败要重试而不是放弃
+  let routeRegistered = false
+  function tryRegisterRoute(): void {
+    if (routeRegistered || closed) return
+    const webServer = ctx.get?.('webServer') as WebServerLike | undefined
+    if (webServer === undefined || typeof webServer.register !== 'function') {
+      pushEvent('boot-retry', 'webServer 不可用,5 秒后重试')
+      const timer = setTimeout(tryRegisterRoute, 5_000)
+      if (typeof ctx.effect === 'function') ctx.effect(() => clearTimeout(timer))
+      return
+    }
+    routeRegistered = true
     const disposer = webServer.register({
       kind: 'prefix',
       path: '/api/taskboard',
@@ -585,10 +608,8 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
       ctx.effect(() => disposer)
     }
     pushEvent('boot', `webServer 路由已挂载（/api/taskboard）`)
-  } else {
-    pushEvent('boot', 'webServer 不可用：面板将无数据（仅日志可观察）')
-    log.warn('[taskboard-dsh] 宿主没有 webServer 服务，client 轮询面不可用')
   }
+  tryRegisterRoute()
 
   // ---- 启动 ----
   pushEvent('boot', `platformUrl=${platformUrl || '(未配置)'} token=${stored.clientToken !== null ? '有' : '无'}`)
