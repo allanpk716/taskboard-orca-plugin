@@ -43,6 +43,8 @@ interface HostContext {
   config?: Record<string, unknown>
   get?(name: string): unknown
   effect?(setup: () => unknown): unknown
+  /** 事件挂接(fiber 保活的关键资源;官方桥 hooks-claude-code 与 ferryman-dsh 同用面) */
+  on?(event: string, handler: (...args: never[]) => unknown): (() => void) | unknown
 }
 
 interface WebServerLike {
@@ -138,16 +140,15 @@ function callbackPage(response: ServerResponse, status: number, title: string, b
 }
 
 /**
- * cordis 插件保活的正统形态:apply 为 async generator(vendor/cordis fiber.ts
- * 的 Effect 类型:"a (possibly async) iterable yielding several disposers"——
- * EffectRunner 逐个 await iter.next(),generator 挂住 = fiber 的 inertia 挂住
- * = 插件常驻)。同步 apply 返回 undefined 的插件,其 fiber 会被宿主启动期的
- * 组合更新/服务重组静默 dispose(2026-11-20 train3060 实测:apply 后 1~2ms
- * 内 effect cleanup 全跑、无重放、宿主进程稳定)。
- *
- * 形态:同步初始化 → yield cleanup disposer → 挂在永不 resolve 的 await 上。
+ * 插件保活形态(2026-11-20 train3060 三阶段实测定案):
+ *   - 同步 apply 且不挂任何宿主资源 → fiber 在启动期组合更新中被静默 dispose;
+ *   - apply 为挂住的 async generator → fiber 常驻,但会阻塞宿主 ready 序列,
+ *     DSH 主窗口不再出现(代价不可接受);
+ *   - **同步 apply + ctx.on 挂事件监听**(ferryman-dsh 生产同款)→ fiber 有
+ *     活动资源、常驻、不阻塞——正解。
+ * webServer 走运行时探测 + 5 秒重试(宿主就绪晚于插件加载)。
  */
-export async function* apply(ctx: HostContext, config: Record<string, unknown> = {}): AsyncGenerator<() => void, void, void> {
+export function apply(ctx: HostContext, config: Record<string, unknown> = {}): void {
   const log = ctx.logger ?? console
   let closed = false
   let stored = loadStored()
@@ -650,13 +651,26 @@ export async function* apply(ctx: HostContext, config: Record<string, unknown> =
   // 叠加宿主 abort 会放大成 fatal load failure)。连接动作由面板「连接账号」
   // 按钮经 POST /api/taskboard/connect 触发——无人看面板就不监听端口。
 
-  // async generator 保活:yield 出 cleanup disposer 后挂在永不 resolve 的
-  // await 上——EffectRunner 的 iter.next() 永不完成,fiber inertia 常驻
-  yield () => {
-    fileLog('disposed', `插件 fiber 被清理 state=${probe.state}`)
-    closed = true
-    stopStream()
-    pendingConnectionAbort?.abort()
+  // 保活:挂一个事件监听进 cordis(fiber 因此有活动资源而常驻,且不阻塞
+  // 宿主 ready——ferryman-dsh 生产同款形态)。app-boot/config-reload 是宿主
+  // 一定声明的事件(patch 重组时 emit),这里只需要"注册"这个动作本身。
+  if (typeof ctx.on === 'function') {
+    const off = ctx.on('app-boot/config-reload', () => {})
+    if (typeof ctx.effect === 'function') {
+      ctx.effect(() => {
+        fileLog('disposed', `插件 fiber 被清理 state=${probe.state}`)
+        closed = true
+        stopStream()
+        pendingConnectionAbort?.abort()
+        if (typeof off === 'function') off()
+      })
+    }
+  } else if (typeof ctx.effect === 'function') {
+    ctx.effect(() => {
+      fileLog('disposed', `插件 fiber 被清理(无 ctx.on 降级路径) state=${probe.state}`)
+      closed = true
+      stopStream()
+      pendingConnectionAbort?.abort()
+    })
   }
-  await new Promise<never>(() => {})
 }
