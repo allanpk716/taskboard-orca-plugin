@@ -16,7 +16,7 @@
    - 状态栏常驻显示未读数，有未读时变色，点击打开插件面板。
    - 面板里有通知列表，点「打开」后用 `shell.openExternal` 打开工单并把该条标为已读；另有「全部已读」。已读状态与网页共用。
 3. **网页避让**：插件持有通知流连接时算作「客户端在线」，网页铃铛不再弹浏览器提醒。
-4. **凭证**：沿用工单板的客户端凭证（`tbc_`），服务端把 `client_scope` 扩大到新增的只读「我的概览」（收件箱、协作中、在等他三份清单和计数），仍然不能读说明、回复、附件，不能改任何东西。
+4. **凭证**：沿用工单板的客户端凭证（`tbc_`）。服务端不新做聚合接口，而是把现有只读接口放开给 `client_scope`（agent-taskboard #348）：`GET /inbox`、`GET /inbox/waiting-on-counterparts`、`GET /tickets?collaborator=me&status=open`（只放行这个精确组合）、`GET /notifications/unread`。概览由插件 worker 拉这 4 个接口拼出来。仍然不能读说明、回复、附件，不能改任何东西。
 5. **仓库**：单独建仓库（本仓库，公开，带 `orca-plugin` topic），独立打 `vX.Y.Z` tag，通过 `orca plugin install allanpk716/taskboard-orca-plugin` 安装。
 6. **连接账号**：沿用桌面客户端的「网页确认 + 本机回环 + PKCE」（见 agent-taskboard ADR 0004、`docs/api.md` 的 `/client/connect`、`/client/token`）：
    1. 首次打开面板时填写平台地址，用 `GET /api/v1/health` 校验（200 JSON 且 `server_version` 非空）后保存。
@@ -35,8 +35,8 @@
 
 ## 服务端配套（在 agent-taskboard 仓库做）
 
-- 新增「我的概览」只读接口，并把它加进 `client_scope`。
-- 下线桌面客户端：删 `cmd/taskboard-client` 及 Windows 相关代码，Release 不再产出 exe，`latest.json` 去掉 `client` 条目，去掉网页和文档里的下载入口。客户端凭证的签发、撤销和通知流接口保留。已安装的旧 exe 不主动作废。
+- #348：把上述 4 个只读接口放开给 `client_scope`。
+- #349 下线桌面客户端：删 `cmd/taskboard-client` 及 Windows 相关代码，Release 不再产出 exe，`latest.json` 去掉 `client` 条目，去掉网页和文档里的下载入口。客户端凭证的签发、撤销和通知流接口保留。已安装的旧 exe 不主动作废。
 
 ## 相关决定记录
 
