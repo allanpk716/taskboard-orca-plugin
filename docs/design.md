@@ -17,7 +17,14 @@
    - 面板里有通知列表，点「打开」后用 `shell.openExternal` 打开工单并把该条标为已读；另有「全部已读」。已读状态与网页共用。
 3. **网页避让**：插件持有通知流连接时算作「客户端在线」，网页铃铛不再弹浏览器提醒。
 4. **凭证**：沿用工单板的客户端凭证（`tbc_`），服务端把 `client_scope` 扩大到新增的只读「我的概览」（收件箱、协作中、在等他三份清单和计数），仍然不能读说明、回复、附件，不能改任何东西。
-5. **仓库**：单独建仓库（本仓库），独立打 `vX.Y.Z` tag，通过 `orca plugin install allanpk716/taskboard-orca-plugin` 安装。
+5. **仓库**：单独建仓库（本仓库，公开，带 `orca-plugin` topic），独立打 `vX.Y.Z` tag，通过 `orca plugin install allanpk716/taskboard-orca-plugin` 安装。
+6. **连接账号**：沿用桌面客户端的「网页确认 + 本机回环 + PKCE」（见 agent-taskboard ADR 0004、`docs/api.md` 的 `/client/connect`、`/client/token`）：
+   1. 首次打开面板时填写平台地址，用 `GET /api/v1/health` 校验（200 JSON 且 `server_version` 非空）后保存。
+   2. 点「连接账号」，worker 在 `127.0.0.1` 上临时监听一个端口，面板用 `openExternal` 打开网页确认页。
+   3. 浏览器回调到本机端口，worker 用 code + verifier 换取 `tbc_` 凭证，存进 `secrets`。
+   4. 网页上这台设备显示为「Orca · <主机名>」。
+   - **开发第一步先验证 worker 能否监听回环端口**。不行就退回"网页显示一次性码、粘贴到面板"，这需要服务端加接口。
+7. **概览刷新**：通知流（SSE `/notifications/stream`）每来一条事件就重新拉一次概览；打开面板时拉一次；后台每 5 分钟兜底拉一次。不做秒级轮询。
 
 ## 技术约束（Orca 1.4.263）
 
@@ -31,6 +38,6 @@
 - 新增「我的概览」只读接口，并把它加进 `client_scope`。
 - 下线桌面客户端：删 `cmd/taskboard-client` 及 Windows 相关代码，Release 不再产出 exe，`latest.json` 去掉 `client` 条目，去掉网页和文档里的下载入口。客户端凭证的签发、撤销和通知流接口保留。已安装的旧 exe 不主动作废。
 
-## 待定
+## 相关决定记录
 
-见 grill 后续轮次，结论补到这里。
+agent-taskboard `docs/adr/0020-orca-plugin-replaces-desktop-client.md`。
