@@ -43,7 +43,7 @@ const assert = (cond, label) => {
 
 assert(routes.length === 1 && routes[0].path === '/api/taskboard', 'webServer 路由已注册 /api/taskboard')
 
-// GET state
+// GET state(boot 后不自动连接:state=disconnected、connectUrl 为空)
 {
   const res = { statusCode: 0, body: null,
     writeHead(code) { this.statusCode = code },
@@ -51,18 +51,28 @@ assert(routes.length === 1 && routes[0].path === '/api/taskboard', 'webServer �
   await routes[0].handler({ method: 'GET', url: '/api/taskboard/state' }, res)
   const state = JSON.parse(res.body)
   assert(res.statusCode === 200, 'GET state → 200')
-  assert(state.state === 'waiting' || state.state === 'disconnected', `state=${state.state}(自动发起了连接)`)
-  assert(typeof state.connectUrl === 'string' && state.connectUrl.includes('/client/connect?'), 'connectUrl 已生成')
+  assert(state.state === 'disconnected', 'boot 后 state=disconnected(不自动发起连接)')
+  assert(state.connectUrl === null, 'boot 后 connectUrl 为空')
   assert(state.recentEvents.some((e) => e.kind === 'boot'), 'boot 事件已记录')
 }
 
-// POST connect(已在等待中,再点一次返回新 URL 或 null)
+// POST connect → 返回授权 URL,异步 listen 生效后 state=waiting
 {
   const res = { statusCode: 0, body: null,
     writeHead(code) { this.statusCode = code },
     end(b) { this.body = b } }
   await routes[0].handler({ method: 'POST', url: '/api/taskboard/connect' }, res)
+  const body = JSON.parse(res.body)
   assert(res.statusCode === 200, 'POST connect → 200')
+  assert(typeof body.url === 'string' && body.url.includes('/client/connect?'), 'connect 返回授权 URL')
+  await new Promise((r) => setTimeout(r, 200))
+  const res2 = { statusCode: 0, body: null,
+    writeHead(code) { this.statusCode = code },
+    end(b) { this.body = b } }
+  await routes[0].handler({ method: 'GET', url: '/api/taskboard/state' }, res2)
+  const state2 = JSON.parse(res2.body)
+  assert(state2.state === 'waiting', 'connect 后 state=waiting')
+  assert(typeof state2.connectUrl === 'string' && state2.connectUrl.includes('/client/connect?'), 'connectUrl 已生成')
 }
 
 // 日志里打了确认 URL

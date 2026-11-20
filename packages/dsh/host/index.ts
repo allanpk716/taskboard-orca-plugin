@@ -345,7 +345,9 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
   function startStream(): void {
     if (probe.state !== 'connected' || streamController !== null || closed) return
     streamGeneration += 1
-    void runStream(streamGeneration)
+    void runStream(streamGeneration).catch((error: unknown) => {
+      log.error(`[taskboard-dsh] 通知流异常退出：${errorMessage(error)}`)
+    })
   }
 
   // ---- 连接账号（回环 PKCE，Orca worker.ts 移植；确认 URL 打印 + 状态面） ----
@@ -368,6 +370,10 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
         resolveCode = resolve
         rejectCode = reject
       })
+      // 宿主把未处理的 Promise rejection 判为 fatal load failure(2026-11-20
+      // train3060 实测 crash):挂一个兜底 handler,后续消费者的 await 照常收到
+      // rejection,但任何窗口期都不会以 unhandled 面目出现
+      waitForCode.catch(() => {})
 
       const server = createServer((request, response) => {
         const url = new URL(request.url ?? '/', 'http://127.0.0.1')
@@ -409,10 +415,14 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
       controller.signal.addEventListener(
         'abort',
         () => {
-          close()
-          if (!codeSettled) {
-            codeSettled = true
-            rejectCode(new DOMException('Aborted', 'AbortError'))
+          try {
+            close()
+            if (!codeSettled) {
+              codeSettled = true
+              rejectCode(new DOMException('Aborted', 'AbortError'))
+            }
+          } catch {
+            // abort 回调里任何异常都不许冒泡(冒泡会被宿主记为加载失败)
           }
         },
         { once: true }
@@ -502,7 +512,10 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
         callbackServer.close()
         if (pendingConnectionAbort === controller) pendingConnectionAbort = null
       }
-    })()
+    })().catch((error: unknown) => {
+      // 兜底:宿主把未处理 rejection 判 fatal,任何漏网异常都收进日志
+      log.error(`[taskboard-dsh] 连接流程异常退出：${errorMessage(error)}`)
+    })
 
     return callbackServer.authorizationUrl
   }
@@ -581,10 +594,10 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
   pushEvent('boot', `platformUrl=${platformUrl || '(未配置)'} token=${stored.clientToken !== null ? '有' : '无'}`)
   if (probe.state === 'connected') {
     startStream()
-  } else if (probe.state === 'disconnected' && platformUrl !== '') {
-    // 探针：启动即自动发起连接，确认 URL 进日志与状态面（面板可点链接）
-    void beginConnection()
   }
+  // 无凭证时不自动发起连接(2026-11-20 train3060 实测教训:加载期挂长活资源
+  // 叠加宿主 abort 会放大成 fatal load failure)。连接动作由面板「连接账号」
+  // 按钮经 POST /api/taskboard/connect 触发——无人看面板就不监听端口。
 
   if (typeof ctx.effect === 'function') {
     ctx.effect(() => {
