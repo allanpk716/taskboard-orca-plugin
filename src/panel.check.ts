@@ -1,8 +1,20 @@
-// `orca plugin check` renders the panel once per scenario, each with the worker on a fresh
-// host. Seed what the worker reads so check shows more than the first state.
 import { defineCheck } from 'orca/testing'
 
 export default defineCheck({
-  fresh: {},
-  counted: { storage: { total: 41 } }
+  connected: {},
+  unconfigured: {
+    storage: { 'taskboard.connectionState': 'unconfigured' }
+  },
+  disconnected: {
+    storage: {
+      'taskboard.connectionState': 'disconnected',
+      'taskboard.platformUrl': 'https://taskboard.example.com'
+    }
+  },
+  expired: {
+    storage: {
+      'taskboard.connectionState': 'expired',
+      'taskboard.platformUrl': 'https://taskboard.example.com'
+    }
+  }
 })

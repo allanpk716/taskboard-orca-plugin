@@ -1,11 +1,11 @@
 {
   "manifestVersion": 2,
   "id": "taskboard",
-  "name": "Taskboard",
+  "name": "工单板",
   "version": "0.1.0",
-  "description": "A sidebar panel and the worker that answers it.",
+  "description": "工单板的提醒和概览，工单内容在浏览器打开。",
   "engines": {
-    "orca": ">=1.4.246"
+    "orca": ">=1.4.248"
   },
   "execution": "trusted-worker",
   "pluginApi": 1,
@@ -14,16 +14,32 @@
     "panels": [
       {
         "id": "taskboard",
-        "title": "Taskboard",
-        "icon": "blocks",
+        "title": "工单板",
+        "icon": "bell",
         "entry": "src/panel.tsx",
         "ui": "components"
+      }
+    ],
+    "statusBarItems": [
+      {
+        "id": "unread",
+        "icon": "plug",
+        "text": "工单板 未连接",
+        "tone": "neutral",
+        "command": "openPanel"
+      }
+    ],
+    "commands": [
+      {
+        "id": "openPanel",
+        "title": "工单板：打开面板",
+        "action": "sidebar.right.toggle"
       }
     ]
   },
   "capabilities": [
-    {
-      "kind": "storage:own"
-    }
+    { "kind": "storage:own" },
+    { "kind": "secrets:own" },
+    { "kind": "notifications:show" }
   ]
 }

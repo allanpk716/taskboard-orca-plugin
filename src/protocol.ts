@@ -1,15 +1,33 @@
-// The panel <-> worker contract, declared once: src/panel.tsx and src/worker.ts both read it.
-export {}
+import type { Overview, TaskboardNotification } from './overview'
+
+export type { Overview, TaskboardNotification }
+
+export type ConnectionState =
+  | 'unconfigured'
+  | 'disconnected'
+  | 'expired'
+  | 'connected'
+
+export interface TaskboardSnapshot {
+  state: ConnectionState
+  platformUrl: string
+  overview: Overview | null
+  notifications: TaskboardNotification[]
+  latestNotificationId: number | null
+}
 
 declare module 'orca' {
   interface PluginRequests {
-    /** The total the worker keeps in storage. */
-    'counter.get': { output: { total: number } }
-    /** Adds `by` to the stored total and answers the new total. */
-    'counter.add': { input: { by: number }; output: { total: number } }
+    'taskboard.getState': { output: TaskboardSnapshot }
+    'config.save': { input: { platformUrl: string }; output: TaskboardSnapshot }
+    'connection.connect': { output: TaskboardSnapshot }
+    'connection.disconnect': { output: TaskboardSnapshot }
+    'debug.setState': { input: { state: ConnectionState }; output: TaskboardSnapshot }
+    'notifications.markRead': { input: { ids: number[] }; output: TaskboardSnapshot }
+    'notifications.markAllRead': { input: { up_to: number }; output: TaskboardSnapshot }
   }
+
   interface PluginPanelEvents {
-    /** Posted to every open panel after the total changes. */
-    'counter.changed': { total: number }
+    'taskboard.changed': { snapshot: TaskboardSnapshot }
   }
 }
