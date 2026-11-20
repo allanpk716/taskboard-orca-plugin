@@ -27,13 +27,15 @@ import {
 
 export const name = 'taskboard-dsh'
 /**
- * 宿主服务依赖：webServer（client 轮询面的路由载体）。
- * 必须走 inject 声明而不是运行时 ctx.get 探测——启动期宿主会反复重组
- * Loader 树(compat preflight disable 行触发 recompose),重放的隔离 scope
- * 里 ctx.get 拿不到全局服务而 fiber 又被当轮 dispose(2026-11-20 train3060
- * 三轮加载全灭的实测根因);inject 让 loader 等到 provider 出现才启动插件。
+ * 宿主服务依赖：空。webServer 走运行时探测。
+ * 两个实测教训(2026-11-20 train3060,根因见 apply 注释):
+ *   - inject 声明服务会把服务的 impl.uid 织进 fiber epoch,宿主启动期
+ *     webServer 提供者被重组时 uid 变化直接触发我们 fiber 的 _unload(),
+ *     且无人 restart——插件 1~2ms 内被静默拆掉;
+ *   - 空 inject + 同步 apply 同样会被 loader 的组合更新 dispose。
+ * 保活靠 apply 的 async generator 形态(见 apply 头注释)。
  */
-export const inject: string[] = ['webServer']
+export const inject: string[] = []
 
 /** cordis Context 鸭子面（ferryman-dsh 同款：零宿主类型依赖） */
 interface HostContext {
@@ -135,7 +137,17 @@ function callbackPage(response: ServerResponse, status: number, title: string, b
   )
 }
 
-export function apply(ctx: HostContext, config: Record<string, unknown> = {}): void {
+/**
+ * cordis 插件保活的正统形态:apply 为 async generator(vendor/cordis fiber.ts
+ * 的 Effect 类型:"a (possibly async) iterable yielding several disposers"——
+ * EffectRunner 逐个 await iter.next(),generator 挂住 = fiber 的 inertia 挂住
+ * = 插件常驻)。同步 apply 返回 undefined 的插件,其 fiber 会被宿主启动期的
+ * 组合更新/服务重组静默 dispose(2026-11-20 train3060 实测:apply 后 1~2ms
+ * 内 effect cleanup 全跑、无重放、宿主进程稳定)。
+ *
+ * 形态:同步初始化 → yield cleanup disposer → 挂在永不 resolve 的 await 上。
+ */
+export async function* apply(ctx: HostContext, config: Record<string, unknown> = {}): AsyncGenerator<() => void, void, void> {
   const log = ctx.logger ?? console
   let closed = false
   let stored = loadStored()
@@ -638,12 +650,13 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
   // 叠加宿主 abort 会放大成 fatal load failure)。连接动作由面板「连接账号」
   // 按钮经 POST /api/taskboard/connect 触发——无人看面板就不监听端口。
 
-  if (typeof ctx.effect === 'function') {
-    ctx.effect(() => {
-      fileLog('disposed', `插件 fiber 被清理 state=${probe.state}`)
-      closed = true
-      stopStream()
-      pendingConnectionAbort?.abort()
-    })
+  // async generator 保活:yield 出 cleanup disposer 后挂在永不 resolve 的
+  // await 上——EffectRunner 的 iter.next() 永不完成,fiber inertia 常驻
+  yield () => {
+    fileLog('disposed', `插件 fiber 被清理 state=${probe.state}`)
+    closed = true
+    stopStream()
+    pendingConnectionAbort?.abort()
   }
+  await new Promise<never>(() => {})
 }

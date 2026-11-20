@@ -29,9 +29,6 @@ const fakeCtx = {
   }
 }
 
-apply(fakeCtx, { platformUrl: 'https://taskboard.example.com' })
-await new Promise((r) => setTimeout(r, 200)) // 让自动 beginConnection 的异步 listen 生效
-
 const assert = (cond, label) => {
   if (!cond) {
     console.error('FAIL:', label)
@@ -40,6 +37,11 @@ const assert = (cond, label) => {
   }
   console.log('ok:', label)
 }
+
+const gen = apply(fakeCtx, { platformUrl: 'https://taskboard.example.com' })
+const first = await gen.next() // async generator apply:驱动到 yield(同步初始化全跑完)
+assert(!first.done && typeof first.value === 'function', 'apply 是 async generator,yield 出 cleanup disposer 后挂住')
+await new Promise((r) => setTimeout(r, 200)) // 让异步 listen 等微任务生效
 
 assert(routes.length === 1 && routes[0].path === '/api/taskboard', 'webServer 路由已注册 /api/taskboard')
 
