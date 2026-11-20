@@ -41,14 +41,23 @@ const plugin = loaded.factory((name) => globalThis.__fakeRequire(name))
 assert(plugin.name === 'taskboard-dsh', '插件 name 正确')
 assert(Array.isArray(plugin.inject) && plugin.inject.includes('slots'), 'inject 声明含 slots')
 
-// 假 ctx 跑 apply:effect 立即执行(冒烟不模拟懒挂载)
+// 假 ctx 跑 apply:effect 立即执行;slots.inject 语义 = 对每个声明生命周期跑回调
 const registrations = []
 plugin.apply({
   effect(fn) {
     fn()
     return () => {}
   },
-  slots: { register: (opts, comp) => registrations.push({ opts, comp }) }
+  slots: {
+    inject(slotName, callback) {
+      const disposer = callback()
+      return typeof disposer === 'function' ? disposer : () => {}
+    },
+    register: (opts, comp) => {
+      registrations.push({ opts, comp, slot: opts.name })
+      return () => {}
+    }
+  }
 })
 
 const panelEntry = registrations.find((r) => r.opts && r.opts.name === 'sidebar.panellist')

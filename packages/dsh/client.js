@@ -160,7 +160,8 @@
       evTime: { marginRight: '6px', fontVariantNumeric: 'tabular-nums' },
     }
 
-    function StateBadge(state) {
+    function StateBadge(props) {
+      var state = props && props.state ? props.state : ''
       var text = { connected: '已连接', waiting: '等待浏览器确认', disconnected: '未连接', expired: '连接已失效', unconfigured: '未配置', unreachable: '面板取不到 host' }[state] || state
       return h('span', { style: S.badge }, text)
     }
@@ -188,7 +189,7 @@
 
       return h('div', { style: S.wrap },
         h('div', { style: S.card },
-          h('h2', { style: S.title }, '工单板探针 ', h(StateBadge, state.state)),
+          h('h2', { style: S.title }, '工单板探针 ', h(StateBadge, { state: state.state })),
           h('p', { style: S.line },
             '平台：', h('span', { style: S.strong }, state.platformUrl || '(未配置)'),
             '　未读：', h('span', { style: S.strong }, state.unread === null ? '?' : String(state.unread))),
@@ -216,19 +217,37 @@
       name: 'taskboard-dsh',
       inject: ['slots'],
       apply: function (ctx) {
-        // 左栏面板行（id 即 MainPanelId；点击由 SidebarRoot → ctx.layout.selectPanel）
-        ctx.effect(function () {
-          return ctx.slots.register({
-            name: 'sidebar.panellist',
-            id: PANEL_ID,
-            order: 500,
-            label: '工单板',
-          }, PanelEntry)
-        }, 'taskboard-dsh: panel entry')
-        // 主区面板主体（main keyed by panelId）
-        ctx.effect(function () {
-          return ctx.slots.register({ name: 'main', key: PANEL_ID }, TaskboardPanel)
-        }, 'taskboard-dsh: panel body')
+        // 向别人的槽贡献组件必须走 slots.inject（ferryman-dsh 实证形态;
+        // 直接 register 主区不渲染,2026-11-20 train3060 实测空白）
+        var slots = ctx && ctx.slots
+        if (!slots || typeof slots.inject !== 'function' || typeof slots.register !== 'function') {
+          console.warn('[taskboard-dsh] 宿主缺 slots 面,客户端半边自降级')
+          return
+        }
+        function registerAll() {
+          var stopEntry = slots.inject('sidebar.panellist', function () {
+            // 左栏面板行（id 即 MainPanelId；点击由 SidebarRoot → ctx.layout.selectPanel）
+            return slots.register({
+              name: 'sidebar.panellist',
+              id: PANEL_ID,
+              order: 500,
+              label: '工单板',
+            }, PanelEntry)
+          })
+          var stopBody = slots.inject('main', function () {
+            // 主区面板主体（main keyed by panelId;AppFrame renderSlot entryKey）
+            return slots.register({ name: 'main', key: PANEL_ID }, TaskboardPanel)
+          })
+          return function () {
+            if (typeof stopEntry === 'function') stopEntry()
+            if (typeof stopBody === 'function') stopBody()
+          }
+        }
+        if (typeof ctx.effect === 'function') {
+          ctx.effect(registerAll, 'taskboard-dsh: panels')
+        } else {
+          registerAll()
+        }
         ensurePolling()
       },
     }
