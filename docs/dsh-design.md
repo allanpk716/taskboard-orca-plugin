@@ -52,6 +52,19 @@
 - 动态插件形态;
 - web/headless 常驻。
 
+## 探针实战结论(2026-11-20 深夜,train3060 全链路打通后追加)
+
+12. **插件保活三件套(cordis fiber 存活条件,官方文档未写)**。宿主 loader 对「常驻 host 插件」的存活判定,实测排除法五轮才定案:
+    - 同步 apply 返回 undefined、只挂 ctx.effect → **apply 后 1~2ms 被 Include 接管序列静默 dispose**(无诊断、无重放,任何宿主、任何挂载形态一致);
+    - `inject: ['webServer']` 声明服务依赖 → 服务提供者在启动期被重组时 impl.uid 变化直接传导成 fiber `_unload()`(cordis fiber.ts `_setEpoch` 机制),同样无人 restart;
+    - apply 写成挂住的 async generator(fiber inertia 常驻)→ **阻塞宿主 ready 序列,DSH 主窗口不再出现**(还连带 host crash 一次)——不可用;
+    - 单挂 `ctx.on` 事件 → 仍被杀;
+    - **正解(= ferryman-dsh 生产形态的完整模仿)**:`ctx.on` 挂事件 + **`ctx.provide` 注册服务(provider 身份是强存活资源)** + **apply 返回 disposer**。三件齐 → fiber 常驻、SSE 持流、不阻塞宿主。**归因二分(disposer vs provide)未做,工程优先**;素材足够提 upstream issue(publish.md 的最小三件套示例跑不通常驻插件)。
+13. **宿主服务就绪时序**:webServer 服务就绪晚于插件加载(启动序),`ctx.get('webServer')` 首探 undefined 属常态——**运行时探测 + 5 秒重试**是必要形态(inject 声明会踩第 12 条的 epoch 连坐)。
+14. **实际部署形态(desktop)**:`dependencies` 里 `link:` 装包(pnpm 装)+ profile patch `cordis.patch.yml` 的 insert 行激活(`name: ./node_modules/taskboard-dsh/index.mjs`)——insert 路径依赖 node_modules 的 link,两者配套,bundles 列表不进。更新 = git pull + 重启 DSH。
+15. **实验场惯例**:desktop 动前先在 web profile 前台宿主(`dsh --profile web --port 3082 --no-open`,Start-Job 抓 stdout)做实验——同版本同 loader 行为,stdout 可见,不碰用户桌面。实验完卸干净(web 回归无 taskboard 状态)。
+16. **Windows 踩坑两枚**:PowerShell 5.1 的 `ConvertTo-Json | Set-Content` 默认写 UTF-16 会毒化 package.json(修法:upload_content 直接写 UTF-8);sshmgr exec 的命令带 `2>&1` 偶触发 SHELL-MISMATCH 误判(简化命令即过)。
+
 ## 风险跟踪
 
 - train3060 为 v0.2.2-rc.5,评估/审核基于 master(2e39e70)与 0.2.0-rc.2 快照:**动手前逐个对照该版本打包产物确认槽位与 API**(尤其 `sidebar.panellist.trailing`);
