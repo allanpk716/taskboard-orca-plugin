@@ -569,12 +569,20 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
   // 热重载态 200、重启后 404),所以探测失败要重试而不是放弃
   let routeRegistered = false
   function tryRegisterRoute(): void {
+    fileLog('diag', `tryRegisterRoute enter closed=${closed} registered=${routeRegistered}`)
     if (routeRegistered || closed) return
-    const webServer = ctx.get?.('webServer') as WebServerLike | undefined
+    let webServer: WebServerLike | undefined
+    try {
+      webServer = ctx.get?.('webServer') as WebServerLike | undefined
+    } catch (error) {
+      fileLog('diag', `ctx.get('webServer') throw: ${errorMessage(error)}`)
+      return
+    }
+    fileLog('diag', `webServer=${webServer === undefined ? 'undefined' : typeof webServer}`)
     if (webServer === undefined || typeof webServer.register !== 'function') {
       pushEvent('boot-retry', 'webServer 不可用,5 秒后重试')
-      const timer = setTimeout(tryRegisterRoute, 5_000)
-      if (typeof ctx.effect === 'function') ctx.effect(() => clearTimeout(timer))
+      // 不挂 effect 清理(诊断期):fiber 被 dispose 时 effect 清理会吞掉重试 timer
+      setTimeout(tryRegisterRoute, 5_000)
       return
     }
     routeRegistered = true
