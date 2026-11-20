@@ -26,8 +26,14 @@ import {
 } from '../../../src/http.ts'
 
 export const name = 'taskboard-dsh'
-/** 宿主服务依赖：探针零硬依赖（webServer 运行时可选探测，缺了仅面板无数据） */
-export const inject: string[] = []
+/**
+ * 宿主服务依赖：webServer（client 轮询面的路由载体）。
+ * 必须走 inject 声明而不是运行时 ctx.get 探测——启动期宿主会反复重组
+ * Loader 树(compat preflight disable 行触发 recompose),重放的隔离 scope
+ * 里 ctx.get 拿不到全局服务而 fiber 又被当轮 dispose(2026-11-20 train3060
+ * 三轮加载全灭的实测根因);inject 让 loader 等到 provider 出现才启动插件。
+ */
+export const inject: string[] = ['webServer']
 
 /** cordis Context 鸭子面（ferryman-dsh 同款：零宿主类型依赖） */
 interface HostContext {
