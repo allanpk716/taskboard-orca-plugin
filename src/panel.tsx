@@ -4,10 +4,10 @@ import {
   Button,
   Callout,
   Card,
+  EmptyState,
   Heading,
   IconButton,
   Input,
-  KeyValue,
   List,
   ListItem,
   plugin,
@@ -23,8 +23,11 @@ import {
   type PanelContext
 } from 'orca'
 import {
-  INBOX_REASON_LABELS,
+  GUEST_TURN_REASON_CODES,
+  groupInboxByCounterpart,
+  type InboxReasonCode,
   type Overview,
+  type OverviewCollaboratingItem,
   type OverviewInboxItem,
   type TaskboardNotification
 } from './overview'
@@ -35,6 +38,17 @@ const snapshot = atom<TaskboardSnapshot | null>(null)
 const addressDraft = atom('')
 const addressEditing = atom(false)
 const menuOpen = atom(false)
+
+type FilterKey = 'mine' | 'guest' | 'collaborating'
+
+const activeFilter = atom<FilterKey>('mine')
+const notificationsOpen = atom(false)
+
+const FILTER_LABELS: Record<FilterKey, string> = {
+  mine: '等我处理',
+  guest: '访客新回复',
+  collaborating: '协作中'
+}
 
 const NOTIFICATION_REASON_LABELS: Record<string, string> = {
   assigned: '新指派',
@@ -70,60 +84,33 @@ function notificationReason(item: TaskboardNotification): string {
 
 function inboxTotal(overview: Overview): number {
   if (overview.inbox === null) return 0
-  return Object.values(overview.inbox.by_reason).reduce(
-    (total, count) => total + count,
-    0
-  )
+  return overview.inbox.items.length
 }
 
-function overviewCard(overview: Overview) {
-  const reasons =
-    overview.inbox === null
-      ? []
-      : Object.entries(overview.inbox.by_reason).filter(([, count]) => count > 0)
+function isGuestTurnReason(code: InboxReasonCode): boolean {
+  return (GUEST_TURN_REASON_CODES as readonly string[]).includes(code)
+}
 
-  return (
-    <Card>
-      <Stack gap="sm">
-        <Heading level={3}>概览</Heading>
-        <KeyValue
-          label="概览计数"
-          items={[
-            {
-              label: '收件箱',
-              value: overview.inbox === null ? OVERVIEW_UNAVAILABLE : inboxTotal(overview)
-            },
-            {
-              label: '协作中',
-              value:
-                overview.collaborating === null
-                  ? OVERVIEW_UNAVAILABLE
-                  : `${overview.collaborating.unread} 未读 / ${overview.collaborating.total}`
-            },
-            {
-              label: '在等他',
-              value: overview.waiting === null ? OVERVIEW_UNAVAILABLE : overview.waiting.total
-            },
-            {
-              label: '通知未读',
-              value: overview.unread_notifications,
-              tone: overview.unread_notifications > 0 ? 'accent' : 'neutral'
-            }
-          ]}
-        />
-        <Stack gap="xs">
-          {reasons.map(([code, count]) => (
-            <Row key={`inbox-reason-${code}`} justify="between" align="center">
-              <Text size="sm">
-                {INBOX_REASON_LABELS[code as keyof typeof INBOX_REASON_LABELS]}
-              </Text>
-              <Badge tone={count > 0 ? 'accent' : 'neutral'}>{count}</Badge>
-            </Row>
-          ))}
-        </Stack>
-      </Stack>
-    </Card>
-  )
+function guestTurnItems(overview: Overview): OverviewInboxItem[] {
+  if (overview.inbox === null) return []
+  return overview.inbox.items.filter((item) => isGuestTurnReason(item.reason_code))
+}
+
+function collaboratingGroups(
+  items: readonly OverviewCollaboratingItem[]
+): { key: string; label: string; items: OverviewCollaboratingItem[] }[] {
+  const groups = new Map<string, OverviewCollaboratingItem[]>()
+  for (const item of items) {
+    const key = item.waiting_on_text ?? '未知'
+    const bucket = groups.get(key)
+    if (bucket === undefined) groups.set(key, [item])
+    else bucket.push(item)
+  }
+  return [...groups.entries()].map(([key, groupItems]) => ({
+    key,
+    label: key,
+    items: [...groupItems].sort((a, b) => Number(b.unread) - Number(a.unread))
+  }))
 }
 
 async function openNotification(item: TaskboardNotification): Promise<void> {
@@ -166,18 +153,27 @@ async function openInboxTicket(item: OverviewInboxItem): Promise<void> {
   await shell.openExternal(item.url)
 }
 
+function waitDurationLabel(since: string): string {
+  const minutes = Math.max(0, (Date.now() - Date.parse(since)) / 60_000)
+  if (minutes < 60) return `已等 ${Math.floor(minutes)} 分钟`
+  if (minutes < 60 * 24) return `已等 ${Math.floor(minutes / 60)} 小时`
+  return `已等 ${Math.floor(minutes / (60 * 24))} 天`
+}
+
 function inboxRow(item: OverviewInboxItem) {
-  const waitedSince = item.last_reply_at ?? item.created_at
   return (
     <ListItem
       key={`inbox-${item.number}`}
       title={`${item.number} · ${item.title}`}
-      description={`${INBOX_REASON_LABELS[item.reason_code]} · ${item.trigger.name}`}
-      icon="file-text"
+      icon={item.read_new ? 'bell' : 'file-text'}
+      current={item.read_new}
     >
-      <Row justify="between" align="center">
+      <Row justify="between" align="center" gap="xs">
+        <Text muted size="xs" truncate>
+          {item.reason}
+        </Text>
         <Text muted size="xs">
-          等了 <RelativeTime at={Date.parse(waitedSince)} />
+          {waitDurationLabel(item.waited_since)}
         </Text>
         <Button
           key={`open-inbox-${item.number}`}
@@ -186,10 +182,199 @@ function inboxRow(item: OverviewInboxItem) {
           icon="open-external"
           onPress={() => openInboxTicket(item)}
         >
-          在浏览器打开
+          打开
         </Button>
       </Row>
     </ListItem>
+  )
+}
+
+async function openCollaboratingTicket(
+  item: OverviewCollaboratingItem
+): Promise<void> {
+  await shell.openExternal(item.url)
+}
+
+function collaboratingRow(item: OverviewCollaboratingItem) {
+  return (
+    <ListItem
+      key={`collab-${item.number}`}
+      title={item.title}
+      icon={item.unread ? 'bell' : 'file-text'}
+      current={item.unread}
+    >
+      <Row justify="between" align="center">
+        <Text muted={!item.unread} size="xs">
+          {item.number}
+          {item.unread ? ' · 未读' : ''}
+        </Text>
+        <Button
+          key={`open-collab-${item.number}`}
+          size="sm"
+          variant="ghost"
+          icon="open-external"
+          onPress={() => openCollaboratingTicket(item)}
+        >
+          打开
+        </Button>
+      </Row>
+    </ListItem>
+  )
+}
+
+function FilterBar({ overview }: { overview: Overview }) {
+  const counts: Record<FilterKey, number | null> = {
+    mine: overview.inbox === null ? null : inboxTotal(overview),
+    guest: overview.inbox === null ? null : guestTurnItems(overview).length,
+    collaborating:
+      overview.collaborating === null ? null : overview.collaborating.unread
+  }
+  const active = read(activeFilter)
+  return (
+    <Row gap="xs" align="stretch">
+      {(Object.keys(FILTER_LABELS) as FilterKey[]).map((key) => (
+        <Button
+          key={`filter-${key}`}
+          variant={active === key ? 'solid' : 'ghost'}
+          tone={active === key ? 'accent' : 'neutral'}
+          onPress={() => set(activeFilter, key)}
+        >
+          {`${counts[key] === null ? '—' : counts[key]} ${FILTER_LABELS[key]}`}
+        </Button>
+      ))}
+    </Row>
+  )
+}
+
+function InboxGroups({
+  overview,
+  items
+}: {
+  overview: Overview
+  items: readonly OverviewInboxItem[]
+}) {
+  if (overview.inbox === null) {
+    return (
+      <EmptyState
+        title={OVERVIEW_UNAVAILABLE}
+        description="平台升级后这里会按往来对象列出工单。"
+        icon="info"
+      />
+    )
+  }
+  const groups = groupInboxByCounterpart(
+    items,
+    overview.waiting?.by_counterpart ?? {}
+  )
+  if (groups.length === 0) {
+    return (
+      <EmptyState
+        title="这里没有工单"
+        description="有新的进展会出现在这里。"
+        icon="check"
+      />
+    )
+  }
+  return (
+    <>
+      {groups.map((group) => (
+        <Card key={`group-${group.key}`}>
+          <Stack gap="sm">
+            <Row justify="between" align="center">
+              <Text weight="semibold">{`${group.label} ×${group.items.length}`}</Text>
+              {group.waitingCount > 0 ? (
+                <Text muted size="xs">{`另等他 ${group.waitingCount}`}</Text>
+              ) : null}
+            </Row>
+            <List label={`${group.label}的工单`}>
+              {group.items.map((item) => inboxRow(item))}
+            </List>
+          </Stack>
+        </Card>
+      ))}
+    </>
+  )
+}
+
+function CollaboratingList({ overview }: { overview: Overview }) {
+  if (overview.collaborating === null) {
+    return (
+      <EmptyState
+        title={OVERVIEW_UNAVAILABLE}
+        description="平台升级后这里会列出你协作跟进的工单。"
+        icon="info"
+      />
+    )
+  }
+  const groups = collaboratingGroups(overview.collaborating.items)
+  if (groups.length === 0) {
+    return (
+      <EmptyState
+        title="没有协作中的工单"
+        description="被加入协作的工单会出现在这里。"
+        icon="check"
+      />
+    )
+  }
+  return (
+    <>
+      {groups.map((group) => (
+        <Card key={`collab-group-${group.key}`}>
+          <Stack gap="sm">
+            <Row justify="between" align="center">
+              <Text weight="semibold">{`轮到 ${group.label} ×${group.items.length}`}</Text>
+            </Row>
+            <List label={`轮到${group.label}的协作工单`}>
+              {group.items.map((item) => collaboratingRow(item))}
+            </List>
+          </Stack>
+        </Card>
+      ))}
+    </>
+  )
+}
+
+function NotificationsCard({ current }: { current: TaskboardSnapshot }) {
+  const open = read(notificationsOpen)
+  const unreadCount = current.notifications.filter(
+    (item) => item.read_at === null
+  ).length
+  return (
+    <Card>
+      <Stack gap="sm">
+        <Row justify="between" align="center">
+          <Heading level={3}>通知</Heading>
+          <Row gap="xs" align="center">
+            {unreadCount > 0 && open ? (
+              <Button
+                key="mark-all-notifications-read"
+                size="sm"
+                variant="ghost"
+                onPress={() => markAllRead(current)}
+              >
+                全部已读
+              </Button>
+            ) : null}
+            <IconButton
+              key="toggle-notifications"
+              icon={open ? 'collapse' : 'expand'}
+              label={open ? '收起通知列表' : '展开通知列表'}
+              variant="ghost"
+              onPress={() => update(notificationsOpen, (value) => !value)}
+            />
+          </Row>
+        </Row>
+        {open ? (
+          <List label="最近通知">
+            {current.notifications.map((item) => notificationRow(item))}
+          </List>
+        ) : (
+          <Text muted size="xs">{`${
+            unreadCount > 0 ? `${unreadCount} 条未读 · ` : ''
+          }最近 ${current.notifications.length} 条`}</Text>
+        )}
+      </Stack>
+    </Card>
   )
 }
 
@@ -402,6 +587,10 @@ function ExpiredPanel({ snapshot: current }: { snapshot: TaskboardSnapshot }) {
 }
 
 function ConnectedPanel({ snapshot: current }: { snapshot: TaskboardSnapshot }) {
+  const unreadNotifications =
+    current.unreadNotificationCount ?? current.notifications.filter(
+      (item) => item.read_at === null
+    ).length
   return (
     <Stack gap="md">
       <Header platformUrl={current.platformUrl} />
@@ -440,37 +629,38 @@ function ConnectedPanel({ snapshot: current }: { snapshot: TaskboardSnapshot }) 
             ) : null
           ) : (
             <>
-              {overviewCard(current.overview)}
-              <Card>
-                <Stack gap="sm">
-                  <Heading level={3}>通知</Heading>
-                  {current.notifications.some((item) => item.read_at === null) ? (
-                    <Row justify="end">
-                      <Button
-                        key="mark-all-notifications-read"
-                        size="sm"
-                        variant="ghost"
-                        onPress={() => markAllRead(current)}
-                      >
-                        全部已读
-                      </Button>
-                    </Row>
-                  ) : null}
-                  <List label="最近通知">
-                    {current.notifications.map((item) => notificationRow(item))}
-                  </List>
-                </Stack>
-              </Card>
-              <Card>
-                <Heading level={3}>收件箱</Heading>
-                {current.overview.inbox === null ? (
-                  <Text muted>{OVERVIEW_UNAVAILABLE}</Text>
-                ) : (
-                  <List label="收件箱工单">
-                    {current.overview.inbox.items.map((item) => inboxRow(item))}
-                  </List>
-                )}
-              </Card>
+              <Row justify="between" align="center">
+                <Badge tone="success">已连接</Badge>
+                {unreadNotifications > 0 ? (
+                  <Button
+                    key="jump-notifications"
+                    size="sm"
+                    variant="ghost"
+                    tone="accent"
+                    icon="bell"
+                    onPress={() => set(notificationsOpen, true)}
+                  >
+                    {unreadNotifications} 条通知未读
+                  </Button>
+                ) : null}
+              </Row>
+              <FilterBar overview={current.overview} />
+              {read(activeFilter) === 'mine' ? (
+                <InboxGroups
+                  overview={current.overview}
+                  items={current.overview.inbox?.items ?? []}
+                />
+              ) : null}
+              {read(activeFilter) === 'guest' ? (
+                <InboxGroups
+                  overview={current.overview}
+                  items={guestTurnItems(current.overview)}
+                />
+              ) : null}
+              {read(activeFilter) === 'collaborating' ? (
+                <CollaboratingList overview={current.overview} />
+              ) : null}
+              <NotificationsCard current={current} />
             </>
           )}
         </>

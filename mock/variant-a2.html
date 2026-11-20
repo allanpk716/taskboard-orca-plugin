@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>工单板 · 三类筛选</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      margin: 0;
+      background: #101012;
+      color: #ececf1;
+      font-family: -apple-system, "PingFang SC", sans-serif;
+      font-size: 14px;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, summary { font: inherit; }
+    button { color: inherit; }
+    button, summary { -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, summary:focus-visible {
+      outline: 2px solid #4c8dff;
+      outline-offset: 2px;
+    }
+    [hidden] { display: none !important; }
+    .panel {
+      width: 100%;
+      max-width: 390px;
+      min-width: 0;
+      margin: 0 auto;
+      padding: 16px 14px 28px;
+    }
+    .header { position: relative; }
+    .title-row { display: flex; align-items: center; gap: 10px; }
+    h1 { margin: 0; font-size: 21px; line-height: 30px; letter-spacing: -.02em; }
+    .address {
+      min-width: 0;
+      margin-left: auto;
+      overflow: hidden;
+      color: #777780;
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .menu { position: relative; flex: 0 0 auto; }
+    .menu summary {
+      display: grid;
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      list-style: none;
+      place-items: center;
+      border-radius: 8px;
+      color: #b7b7bf;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .menu summary::-webkit-details-marker { display: none; }
+    .menu summary:hover { background: #1e1e21; }
+    .menu-pop {
+      position: absolute;
+      z-index: 10;
+      top: 38px;
+      right: 0;
+      width: 164px;
+      padding: 5px;
+      border: 1px solid #303036;
+      border-radius: 10px;
+      background: #1e1e21;
+      box-shadow: 0 12px 28px #0008;
+    }
+    .menu-pop button {
+      width: 100%;
+      padding: 10px 11px;
+      cursor: pointer;
+      text-align: left;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      font-size: 13px;
+    }
+    .menu-pop button:hover { background: #29292e; }
+    .menu-pop .danger { color: #e89393; }
+    .status-bar {
+      display: flex;
+      align-items: center;
+      min-height: 34px;
+      margin-top: 8px;
+      padding: 7px 10px;
+      border: 1px solid #25252a;
+      border-radius: 9px;
+      background: #171719;
+      color: #a4a4ac;
+      font-size: 12px;
+    }
+    .connection { display: inline-flex; align-items: center; gap: 7px; }
+    .online-dot { width: 7px; height: 7px; border-radius: 50%; background: #59b98a; }
+    .unread-status {
+      min-height: 24px;
+      margin: -4px -5px -4px auto;
+      padding: 4px 5px;
+      cursor: pointer;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: #4c8dff;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .unread-status:hover { background: #20242c; }
+    .filters {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 10px;
+    }
+    .filter {
+      min-width: 0;
+      padding: 9px 3px 10px;
+      cursor: pointer;
+      text-align: center;
+      border: 1px solid #29292e;
+      border-radius: 10px;
+      background: #1a1a1d;
+    }
+    .filter:hover { background: #1e1e21; }
+    .filter[aria-selected="true"] {
+      border-color: #4c8dff;
+      box-shadow: inset 0 2px 0 #4c8dff;
+    }
+    .filter-count {
+      display: block;
+      color: #b5b5bd;
+      font-size: 22px;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+      line-height: 27px;
+    }
+    .filter[aria-selected="true"] .filter-count { color: #4c8dff; }
+    .filter-label {
+      display: block;
+      margin-top: 2px;
+      color: #8e8e97;
+      font-size: 11px;
+      line-height: 16px;
+      white-space: nowrap;
+    }
+    .filter[aria-selected="true"] .filter-label { color: #d9e5ff; }
+    .list-section { margin-top: 17px; }
+    .section-heading {
+      display: flex;
+      min-width: 0;
+      align-items: baseline;
+      gap: 8px;
+      margin: 0 2px 10px;
+    }
+    .section-heading h2 { flex: 0 0 auto; margin: 0; font-size: 16px; line-height: 22px; }
+    .section-heading span {
+      min-width: 0;
+      overflow: hidden;
+      color: #85858e;
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .grouped-list {
+      overflow: hidden;
+      border: 1px solid #29292e;
+      border-radius: 12px;
+      background: #1a1a1d;
+    }
+    .person-group + .person-group { border-top: 1px solid #2b2b30; }
+    .group-title {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 7px;
+      margin: 0;
+      padding: 12px 13px 7px;
+      color: #b8b8c0;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 18px;
+    }
+    .group-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .group-count { flex: 0 0 auto; color: #6f6f78; font-size: 11px; font-weight: 500; }
+    .waiting-elsewhere {
+      flex: 0 0 auto;
+      margin-left: auto;
+      color: #777780;
+      font-size: 10px;
+      font-weight: 400;
+      white-space: nowrap;
+    }
+    .ticket { padding: 9px 12px 11px; }
+    .ticket + .ticket, .activity + .activity, .collaboration + .collaboration { border-top: 1px solid #242428; }
+    .ticket-line { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
+    .ticket-number {
+      flex: 0 0 auto;
+      color: #74747d;
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .ticket-title, .activity-title, .collaboration-title {
+      min-width: 0;
+      overflow: hidden;
+      font-size: 14px;
+      font-weight: 550;
+      line-height: 21px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ticket-meta, .activity-meta, .collaboration-meta {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .reason-badge {
+      flex: 0 0 auto;
+      max-width: 150px;
+      overflow: hidden;
+      padding: 3px 7px;
+      border: 1px solid #2d4772;
+      border-radius: 5px;
+      background: #1d2b43;
+      color: #9dbdff;
+      font-size: 10px;
+      line-height: 14px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .reason-badge.neutral { border-color: #3a3a41; background: #242428; color: #b0b0b8; }
+    .waited { min-width: 0; color: #8f8f98; font-size: 11px; white-space: nowrap; }
+    .open-button {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 3px;
+      min-height: 28px;
+      margin: -3px -3px -3px auto;
+      padding: 3px 6px 3px 9px;
+      cursor: pointer;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: #4c8dff;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .open-button:hover { background: #242c3a; }
+    .activity, .collaboration { position: relative; padding: 10px 12px 11px 14px; }
+    .activity.unread::before, .notification.unread::before {
+      position: absolute;
+      top: 12px;
+      bottom: 12px;
+      left: 0;
+      width: 3px;
+      border-radius: 0 2px 2px 0;
+      background: #4c8dff;
+      content: "";
+    }
+    .activity-title { color: #85858e; font-weight: 450; }
+    .activity.unread .activity-title { color: #ececf1; font-weight: 600; }
+    .activity-action { color: #74747d; font-size: 11px; white-space: nowrap; }
+    .activity.unread .activity-action { color: #a0a0a9; }
+    .collaboration-title { color: #898992; font-weight: 450; }
+    .collaboration.unread .collaboration-title { color: #ececf1; font-weight: 600; }
+    .collaboration .ticket-number { color: #696972; }
+    .collaboration.unread .ticket-number { color: #92929b; }
+    .unread-dot {
+      flex: 0 0 auto;
+      width: 6px;
+      height: 6px;
+      margin-left: -3px;
+      border-radius: 50%;
+      background: #4c8dff;
+    }
+    .notifications {
+      margin-top: 18px;
+      overflow: hidden;
+      border: 1px solid #25252a;
+      border-radius: 11px;
+      background: #171719;
+      scroll-margin: 16px;
+    }
+    .notification-summary {
+      display: flex;
+      align-items: center;
+      min-height: 46px;
+      padding: 11px 13px;
+      cursor: pointer;
+      list-style: none;
+      color: #a3a3ac;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .notification-summary::-webkit-details-marker { display: none; }
+    .chevron { margin-left: auto; color: #777780; font-size: 16px; transition: transform .16s ease; }
+    details[open] .chevron { transform: rotate(180deg); }
+    .notification-list { border-top: 1px solid #29292e; }
+    .notification {
+      position: relative;
+      display: block;
+      width: 100%;
+      padding: 10px 14px 10px 15px;
+      cursor: pointer;
+      text-align: left;
+      border: 0;
+      background: transparent;
+    }
+    .notification + .notification { border-top: 1px solid #242428; }
+    .notification:hover { background: #202024; }
+    .notification-title {
+      overflow: hidden;
+      color: #777780;
+      font-size: 12px;
+      line-height: 18px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .notification.unread .notification-title { color: #d5d5dc; font-weight: 600; }
+    .notification-meta { margin-top: 3px; color: #696972; font-size: 10px; line-height: 15px; }
+    .notification.unread .notification-meta { color: #85858e; }
+    .toast {
+      position: fixed;
+      z-index: 20;
+      bottom: 20px;
+      left: 50%;
+      width: max-content;
+      max-width: calc(100vw - 32px);
+      padding: 10px 14px;
+      transform: translate(-50%, 12px);
+      border: 1px solid #34343b;
+      border-radius: 9px;
+      background: #25252a;
+      box-shadow: 0 8px 24px #0007;
+      color: #dedee4;
+      font-size: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .15s ease, transform .15s ease;
+    }
+    .toast.visible { transform: translate(-50%, 0); opacity: 1; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+    @media (max-width: 350px) {
+      .address { display: none; }
+      .ticket-number { font-size: 9px; }
+      .ticket-title, .activity-title, .collaboration-title { font-size: 13px; }
+      .reason-badge { padding-right: 5px; padding-left: 5px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <header class="header">
+      <div class="title-row">
+        <h1>工单板</h1>
+        <div class="address" title="https://taskboard.example.com">taskboard.example.com</div>
+        <details class="menu">
+          <summary aria-label="工单板菜单">⋯</summary>
+          <div class="menu-pop">
+            <button type="button" data-menu="更改平台地址">更改平台地址</button>
+            <button type="button" class="danger" data-menu="断开连接">断开连接</button>
+          </div>
+        </details>
+      </div>
+      <div class="status-bar" aria-label="连接正常，3 条通知未读">
+        <span class="connection"><span class="online-dot"></span>连接正常</span>
+        <button class="unread-status" id="unread-status" type="button">3 条通知未读</button>
+      </div>
+      <div class="filters" role="tablist" aria-label="工单筛选">
+        <button class="filter" id="filter-inbox" type="button" role="tab" aria-selected="true" aria-controls="view-inbox" data-filter="inbox">
+          <span class="filter-count">10</span>
+          <span class="filter-label">等我处理</span>
+        </button>
+        <button class="filter" id="filter-guests" type="button" role="tab" aria-selected="false" aria-controls="view-guests" tabindex="-1" data-filter="guests">
+          <span class="filter-count">5</span>
+          <span class="filter-label">访客新回复</span>
+        </button>
+        <button class="filter" id="filter-collaborating" type="button" role="tab" aria-selected="false" aria-controls="view-collaborating" tabindex="-1" data-filter="collaborating" aria-label="协作中，2 条未读，共 4 条">
+          <span class="filter-count">2</span>
+          <span class="filter-label">协作中</span>
+        </button>
+      </div>
+    </header>
+
+    <section class="list-section" id="view-inbox" role="tabpanel" aria-labelledby="filter-inbox">
+      <div class="section-heading">
+        <h2>等我处理</h2>
+        <span>按往来对象 · 组内等待久的在前</span>
+      </div>
+      <div class="grouped-list">
+        <section class="person-group" aria-labelledby="inbox-li">
+          <h3 class="group-title" id="inbox-li">
+            <span class="group-name">李工</span><span class="group-count">3</span><span class="waiting-elsewhere">另等他 2</span>
+          </h3>
+          <article class="ticket">
+            <div class="ticket-line">
+              <span class="ticket-number">20261120-012</span>
+              <span class="ticket-title" title="生产设备温度告警持续触发">生产设备温度告警持续触发</span>
+            </div>
+            <div class="ticket-meta">
+              <span class="reason-badge">新指派</span><span class="waited">等了 2 天</span>
+              <button class="open-button" type="button" data-open="20261120-012 生产设备温度告警持续触发" aria-label="打开 20261120-012">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+          <article class="ticket">
+            <div class="ticket-line">
+              <span class="ticket-number">20261120-007</span>
+              <span class="ticket-title" title="月度报表导出格式错乱">月度报表导出格式错乱</span>
+            </div>
+            <div class="ticket-meta">
+              <span class="reason-badge">发起人退回修改</span><span class="waited">等了 5 小时 20 分</span>
+              <button class="open-button" type="button" data-open="20261120-007 月度报表导出格式错乱" aria-label="打开 20261120-007">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+          <article class="ticket">
+            <div class="ticket-line">
+              <span class="ticket-number">20261120-003</span>
+              <span class="ticket-title" title="新同事入职账号权限补齐">新同事入职账号权限补齐</span>
+            </div>
+            <div class="ticket-meta">
+              <span class="reason-badge neutral">指派人回复待答复</span><span class="waited">等了 36 分钟</span>
+              <button class="open-button" type="button" data-open="20261120-003 新同事入职账号权限补齐" aria-label="打开 20261120-003">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+        </section>
+        <section class="person-group" aria-labelledby="inbox-wang">
+          <h3 class="group-title" id="inbox-wang">
+            <span class="group-name">王工</span><span class="group-count">2</span><span class="waiting-elsewhere">另等他 1</span>
+          </h3>
+          <article class="ticket">
+            <div class="ticket-line">
+              <span class="ticket-number">20261120-010</span>
+              <span class="ticket-title" title="财务系统登录页偶发白屏">财务系统登录页偶发白屏</span>
+            </div>
+            <div class="ticket-meta">
+              <span class="reason-badge neutral">已交付待验收</span><span class="waited">等了 1 天 3 小时</span>
+              <button class="open-button" type="button" data-open="20261120-010 财务系统登录页偶发白屏" aria-label="打开 20261120-010">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+          <article class="ticket">
+            <div class="ticket-line">
+              <span class="ticket-number">20261120-005</span>
+              <span class="ticket-title" title="移动端审批列表无法滚动">移动端审批列表无法滚动</span>
+            </div>
+            <div class="ticket-meta">
+              <span class="reason-badge">新指派</span><span class="waited">等了 48 分钟</span>
+              <button class="open-button" type="button" data-open="20261120-005 移动端审批列表无法滚动" aria-label="打开 20261120-005">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+        </section>
+        <section class="person-group" aria-labelledby="inbox-zhang">
+          <h3 class="group-title" id="inbox-zhang">
+            <span class="group-name" title="访客 · 检验科-张三">访客 · 检验科-张三</span><span class="group-count">2</span>
+          </h3>
+          <article class="ticket">
+            <div class="ticket-line">
+              <span class="ticket-number">20261120-009</span>
+              <span class="ticket-title" title="检验设备告警未同步">检验设备告警未同步</span>
+            </div>
+            <div class="ticket-meta">
+              <span class="reason-badge">访客回复了</span><span class="waited">等了 3 小时 10 分</span>
+              <button class="open-button" type="button" data-open="20261120-009 检验设备告警未同步" aria-label="打开 20261120-009">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+          <article class="ticket">
+            <div class="ticket-line">
+              <span class="ticket-number">20261120-002</span>
+              <span class="ticket-title" title="设备校准记录缺少年度汇总">设备校准记录缺少年度汇总</span>
+            </div>
+            <div class="ticket-meta">
+              <span class="reason-badge neutral">访客补全了说明</span><span class="waited">等了 18 分钟</span>
+              <button class="open-button" type="button" data-open="20261120-002 设备校准记录缺少年度汇总" aria-label="打开 20261120-002">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+        </section>
+        <section class="person-group" aria-labelledby="inbox-zhou">
+          <h3 class="group-title" id="inbox-zhou">
+            <span class="group-name" title="访客 · 供应商-周敏">访客 · 供应商-周敏</span><span class="group-count">1</span>
+          </h3>
+          <article class="ticket">
+            <div class="ticket-line">
+              <span class="ticket-number">20261120-013</span>
+              <span class="ticket-title" title="供应商门户证书更新">供应商门户证书更新</span>
+            </div>
+            <div class="ticket-meta">
+              <span class="reason-badge">访客回复了</span><span class="waited">等了 2 小时 5 分</span>
+              <button class="open-button" type="button" data-open="20261120-013 供应商门户证书更新" aria-label="打开 20261120-013">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+        </section>
+        <section class="person-group" aria-labelledby="inbox-self">
+          <h3 class="group-title" id="inbox-self"><span class="group-name">我自己</span><span class="group-count">1</span></h3>
+          <article class="ticket">
+            <div class="ticket-line">
+              <span class="ticket-number">20261120-006</span>
+              <span class="ticket-title" title="整理季度值班表">整理季度值班表</span>
+            </div>
+            <div class="ticket-meta">
+              <span class="reason-badge neutral">新指派</span><span class="waited">等了 1 天</span>
+              <button class="open-button" type="button" data-open="20261120-006 整理季度值班表" aria-label="打开 20261120-006">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+        </section>
+        <section class="person-group" aria-labelledby="inbox-triage">
+          <h3 class="group-title" id="inbox-triage"><span class="group-name">待初筛</span><span class="group-count">1</span></h3>
+          <article class="ticket">
+            <div class="ticket-line">
+              <span class="ticket-number">20261120-014</span>
+              <span class="ticket-title" title="办公区打印机频繁离线">办公区打印机频繁离线</span>
+            </div>
+            <div class="ticket-meta">
+              <span class="reason-badge neutral">待初筛</span><span class="waited">等了 12 分钟</span>
+              <button class="open-button" type="button" data-open="20261120-014 办公区打印机频繁离线" aria-label="打开 20261120-014">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+        </section>
+      </div>
+    </section>
+
+    <section class="list-section" id="view-guests" role="tabpanel" aria-labelledby="filter-guests" hidden>
+      <div class="section-heading">
+        <h2>访客新回复</h2>
+        <span>5 条未处理动态 · 按访客</span>
+      </div>
+      <div class="grouped-list">
+        <section class="person-group" aria-labelledby="guest-zhang">
+          <h3 class="group-title" id="guest-zhang"><span class="group-name">检验科-张三</span><span class="group-count">3</span></h3>
+          <article class="activity unread">
+            <span class="sr-only">未读，</span>
+            <div class="activity-title" title="检验设备告警未同步">检验设备告警未同步</div>
+            <div class="activity-meta">
+              <span class="activity-action">回复了 · 28 分钟前</span>
+              <button class="open-button" type="button" data-open="20261120-009 检验设备告警未同步" aria-label="去处理检验设备告警未同步">去处理 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+          <article class="activity">
+            <span class="sr-only">已读，</span>
+            <div class="activity-title" title="设备校准记录缺少年度汇总">设备校准记录缺少年度汇总</div>
+            <div class="activity-meta">
+              <span class="activity-action">补全了说明 · 2 小时前</span>
+              <button class="open-button" type="button" data-open="20261120-002 设备校准记录缺少年度汇总" aria-label="去处理设备校准记录缺少年度汇总">去处理 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+          <article class="activity unread">
+            <span class="sr-only">未读，</span>
+            <div class="activity-title" title="月度检验数据导出字段调整">月度检验数据导出字段调整</div>
+            <div class="activity-meta">
+              <span class="activity-action">修订了说明 · 1 天前</span>
+              <button class="open-button" type="button" data-open="20261120-017 月度检验数据导出字段调整" aria-label="去处理月度检验数据导出字段调整">去处理 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+        </section>
+        <section class="person-group" aria-labelledby="guest-zhou">
+          <h3 class="group-title" id="guest-zhou"><span class="group-name">供应商-周敏</span><span class="group-count">2</span></h3>
+          <article class="activity unread">
+            <span class="sr-only">未读，</span>
+            <div class="activity-title" title="供应商门户证书更新">供应商门户证书更新</div>
+            <div class="activity-meta">
+              <span class="activity-action">回复了 · 3 小时前</span>
+              <button class="open-button" type="button" data-open="20261120-013 供应商门户证书更新" aria-label="去处理供应商门户证书更新">去处理 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+          <article class="activity">
+            <span class="sr-only">已读，</span>
+            <div class="activity-title" title="备件报价单缺少含税说明">备件报价单缺少含税说明</div>
+            <div class="activity-meta">
+              <span class="activity-action">补全了说明 · 2 天前</span>
+              <button class="open-button" type="button" data-open="20261120-018 备件报价单缺少含税说明" aria-label="去处理备件报价单缺少含税说明">去处理 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+        </section>
+      </div>
+    </section>
+
+    <section class="list-section" id="view-collaborating" role="tabpanel" aria-labelledby="filter-collaborating" hidden>
+      <div class="section-heading">
+        <h2>协作中</h2>
+        <span>2 条未读 / 共 4 条 · 按等待方</span>
+      </div>
+      <div class="grouped-list">
+        <section class="person-group" aria-labelledby="waiting-li">
+          <h3 class="group-title" id="waiting-li"><span class="group-name">轮到 李工（指派人）</span><span class="group-count">2</span></h3>
+          <article class="collaboration unread">
+            <span class="sr-only">未读，</span>
+            <div class="collaboration-title" title="设备告警升级规则复核">设备告警升级规则复核</div>
+            <div class="collaboration-meta">
+              <span class="ticket-number">20261120-015</span><span class="unread-dot" aria-hidden="true"></span>
+              <button class="open-button" type="button" data-open="20261120-015 设备告警升级规则复核" aria-label="打开 20261120-015">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+          <article class="collaboration">
+            <span class="sr-only">已读，</span>
+            <div class="collaboration-title" title="月度经营报表口径确认">月度经营报表口径确认</div>
+            <div class="collaboration-meta">
+              <span class="ticket-number">20261120-008</span>
+              <button class="open-button" type="button" data-open="20261120-008 月度经营报表口径确认" aria-label="打开 20261120-008">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+        </section>
+        <section class="person-group" aria-labelledby="waiting-wang">
+          <h3 class="group-title" id="waiting-wang"><span class="group-name">轮到 王工（发起人）</span><span class="group-count">1</span></h3>
+          <article class="collaboration unread">
+            <span class="sr-only">未读，</span>
+            <div class="collaboration-title" title="入职账号开通范围确认">入职账号开通范围确认</div>
+            <div class="collaboration-meta">
+              <span class="ticket-number">20261120-016</span><span class="unread-dot" aria-hidden="true"></span>
+              <button class="open-button" type="button" data-open="20261120-016 入职账号开通范围确认" aria-label="打开 20261120-016">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+        </section>
+        <section class="person-group" aria-labelledby="waiting-guest">
+          <h3 class="group-title" id="waiting-guest"><span class="group-name">轮到 访客</span><span class="group-count">1</span></h3>
+          <article class="collaboration">
+            <span class="sr-only">已读，</span>
+            <div class="collaboration-title" title="检验科设备序列号补充">检验科设备序列号补充</div>
+            <div class="collaboration-meta">
+              <span class="ticket-number">20261120-004</span>
+              <button class="open-button" type="button" data-open="20261120-004 检验科设备序列号补充" aria-label="打开 20261120-004">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+        </section>
+      </div>
+    </section>
+
+    <details class="notifications" id="notifications">
+      <summary class="notification-summary">
+        <span>最近通知 · 3 条未读</span><span class="chevron" aria-hidden="true">⌄</span>
+      </summary>
+      <div class="notification-list">
+        <button class="notification unread" type="button" data-open="20261120-014 办公区打印机频繁离线">
+          <span class="sr-only">未读，</span>
+          <div class="notification-title">20261120-014 · 办公区打印机频繁离线</div>
+          <div class="notification-meta">新指派 · 8 分钟前</div>
+        </button>
+        <button class="notification unread" type="button" data-open="20261120-009 检验设备告警未同步">
+          <span class="sr-only">未读，</span>
+          <div class="notification-title">20261120-009 · 检验设备告警未同步</div>
+          <div class="notification-meta">访客回复 · 28 分钟前</div>
+        </button>
+        <button class="notification unread" type="button" data-open="备份任务连续失败">
+          <span class="sr-only">未读，</span>
+          <div class="notification-title">备份任务连续失败</div>
+          <div class="notification-meta">备份失败 · 1 小时 30 分前</div>
+        </button>
+        <button class="notification" type="button" data-open="20261120-007 月度报表导出格式错乱">
+          <span class="sr-only">已读，</span>
+          <div class="notification-title">20261120-007 · 月度报表导出格式错乱</div>
+          <div class="notification-meta">退回修改 · 3 小时前</div>
+        </button>
+        <button class="notification" type="button" data-open="20261120-015 设备告警升级规则复核">
+          <span class="sr-only">已读，</span>
+          <div class="notification-title">20261120-015 · 设备告警升级规则复核</div>
+          <div class="notification-meta">协作者回复 · 6 小时前</div>
+        </button>
+        <button class="notification" type="button" data-open="20261120-002 设备校准记录缺少年度汇总">
+          <span class="sr-only">已读，</span>
+          <div class="notification-title">20261120-002 · 设备校准记录缺少年度汇总</div>
+          <div class="notification-meta">访客补全说明 · 1 天前</div>
+        </button>
+      </div>
+    </details>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script>
+    const filters = Array.from(document.querySelectorAll('[data-filter]'));
+    const views = Array.from(document.querySelectorAll('[role="tabpanel"]'));
+    function selectFilter(name) {
+      filters.forEach((filter) => {
+        const selected = filter.dataset.filter === name;
+        filter.setAttribute('aria-selected', String(selected));
+        filter.tabIndex = selected ? 0 : -1;
+      });
+      views.forEach((view) => { view.hidden = view.id !== 'view-' + name; });
+    }
+    filters.forEach((filter, index) => {
+      filter.addEventListener('click', () => selectFilter(filter.dataset.filter));
+      filter.addEventListener('keydown', (event) => {
+        let nextIndex;
+        if (event.key === 'ArrowRight') nextIndex = (index + 1) % filters.length;
+        if (event.key === 'ArrowLeft') nextIndex = (index - 1 + filters.length) % filters.length;
+        if (event.key === 'Home') nextIndex = 0;
+        if (event.key === 'End') nextIndex = filters.length - 1;
+        if (nextIndex === undefined) return;
+        event.preventDefault();
+        filters[nextIndex].focus();
+        selectFilter(filters[nextIndex].dataset.filter);
+      });
+    });
+    document.getElementById('unread-status').addEventListener('click', () => {
+      document.getElementById('notifications').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    const toast = document.getElementById('toast');
+    let toastTimer;
+    function showToast(message) {
+      clearTimeout(toastTimer);
+      toast.textContent = message;
+      toast.classList.add('visible');
+      toastTimer = setTimeout(() => toast.classList.remove('visible'), 2200);
+    }
+    document.querySelectorAll('[data-open]').forEach((button) => {
+      button.addEventListener('click', () => showToast('将在浏览器打开 · ' + button.dataset.open));
+    });
+    document.querySelectorAll('[data-menu]').forEach((button) => {
+      button.addEventListener('click', () => {
+        button.closest('details').removeAttribute('open');
+        showToast('原型操作 · ' + button.dataset.menu);
+      });
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') document.querySelector('.menu').removeAttribute('open');
+    });
+  </script>
+</body>
+</html>

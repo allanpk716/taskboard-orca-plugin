@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>工单板 · 分段标签</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      margin: 0;
+      background: #101012;
+      color: #ececf1;
+      font-family: -apple-system, "PingFang SC", sans-serif;
+      font-size: 14px;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, summary { font: inherit; }
+    button { color: inherit; }
+    button, summary { -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, summary:focus-visible { outline: 2px solid #4c8dff; outline-offset: 2px; }
+    [hidden] { display: none !important; }
+    .top {
+      position: sticky;
+      z-index: 5;
+      top: 0;
+      width: 100%;
+      max-width: 390px;
+      margin: 0 auto;
+      padding: 15px 14px 0;
+      background: #101012;
+    }
+    .title-row { display: flex; min-width: 0; align-items: center; gap: 9px; min-height: 32px; }
+    h1 { flex: 0 0 auto; margin: 0; font-size: 20px; line-height: 28px; letter-spacing: -.02em; }
+    .address-divider { flex: 0 0 auto; width: 1px; height: 13px; background: #333339; }
+    .address {
+      min-width: 0;
+      overflow: hidden;
+      color: #777780;
+      font-size: 10px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .menu { position: relative; flex: 0 0 auto; margin-left: auto; }
+    .menu summary {
+      display: grid;
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      list-style: none;
+      place-items: center;
+      border-radius: 8px;
+      color: #b7b7bf;
+      font-size: 20px;
+    }
+    .menu summary::-webkit-details-marker { display: none; }
+    .menu summary:hover { background: #1e1e21; }
+    .menu-pop {
+      position: absolute;
+      z-index: 10;
+      top: 38px;
+      right: 0;
+      width: 164px;
+      padding: 5px;
+      border: 1px solid #303036;
+      border-radius: 10px;
+      background: #1e1e21;
+      box-shadow: 0 12px 28px #0008;
+    }
+    .menu-pop button {
+      width: 100%;
+      padding: 10px 11px;
+      cursor: pointer;
+      text-align: left;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      font-size: 13px;
+    }
+    .menu-pop button:hover { background: #29292e; }
+    .menu-pop .danger { color: #e89393; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 11px;
+      padding: 10px 0;
+      border: 1px solid #29292e;
+      border-radius: 10px;
+      background: #1a1a1d;
+    }
+    .stat { min-width: 0; padding: 0 12px; }
+    .stat + .stat { border-left: 1px solid #2d2d32; }
+    .stat-number { color: #d8d8de; font-size: 23px; line-height: 28px; font-weight: 650; letter-spacing: -.03em; }
+    .stat-number.accent { color: #70a2ff; }
+    .stat-total { margin-left: 3px; color: #6f6f78; font-size: 11px; font-weight: 500; letter-spacing: 0; }
+    .stat-label { margin-top: 1px; overflow: hidden; color: #85858e; font-size: 10px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
+    .tabs { display: grid; grid-template-columns: 1fr 1fr; margin-top: 12px; border-bottom: 1px solid #2b2b30; }
+    .tab {
+      position: relative;
+      min-height: 43px;
+      padding: 9px 8px 11px;
+      cursor: pointer;
+      border: 0;
+      background: transparent;
+      color: #85858e;
+      font-size: 13px;
+      font-weight: 550;
+    }
+    .tab:hover { color: #c6c6cd; }
+    .tab[aria-selected="true"] { color: #ececf1; }
+    .tab[aria-selected="true"]::after {
+      position: absolute;
+      right: 20px;
+      bottom: -1px;
+      left: 20px;
+      height: 2px;
+      border-radius: 2px 2px 0 0;
+      background: #4c8dff;
+      content: "";
+    }
+    .tab-count { margin-left: 3px; color: #777780; font-size: 11px; font-weight: 500; }
+    .tab[aria-selected="true"] .tab-count { color: #8db4fb; }
+    .content { width: 100%; max-width: 390px; margin: 0 auto; padding: 14px 14px 28px; }
+    .group {
+      overflow: hidden;
+      border: 1px solid #29292e;
+      border-radius: 12px;
+      background: #1a1a1d;
+    }
+    .group + .group { margin-top: 12px; }
+    .group-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin: 0;
+      padding: 11px 13px 9px;
+      border-bottom: 1px solid #29292e;
+      color: #b8b8c0;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .group-title span { color: #74747d; font-size: 11px; font-weight: 500; }
+    .ticket { padding: 11px 12px 12px; }
+    .ticket + .ticket { border-top: 1px solid #25252a; }
+    .ticket-title {
+      overflow: hidden;
+      font-size: 14px;
+      font-weight: 550;
+      line-height: 20px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ticket-meta { display: flex; min-width: 0; align-items: center; gap: 6px; margin-top: 5px; white-space: nowrap; }
+    .ticket-number { flex: 0 0 auto; color: #6e6e77; font-size: 9px; font-variant-numeric: tabular-nums; }
+    .ticket-reason { flex: 0 0 auto; color: #9db9ed; font-size: 10px; }
+    .ticket-waited { min-width: 0; overflow: hidden; color: #85858e; font-size: 10px; text-overflow: ellipsis; }
+    .open-button {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 3px;
+      min-height: 27px;
+      margin: -3px -3px -3px auto;
+      padding: 3px 5px 3px 8px;
+      cursor: pointer;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: #82adff;
+      font-size: 11px;
+    }
+    .open-button:hover { background: #242c3a; }
+    .list-toolbar { display: flex; min-height: 32px; align-items: center; margin: 0 2px 8px; }
+    .list-caption { color: #85858e; font-size: 11px; }
+    .mark-all {
+      margin-left: auto;
+      padding: 5px 0 5px 8px;
+      cursor: pointer;
+      border: 0;
+      background: transparent;
+      color: #92929b;
+      font-size: 11px;
+    }
+    .mark-all:hover { color: #c6c6cd; }
+    .notification-list {
+      overflow: hidden;
+      border: 1px solid #29292e;
+      border-radius: 12px;
+      background: #1a1a1d;
+    }
+    .notification {
+      position: relative;
+      display: block;
+      width: 100%;
+      padding: 12px 34px 12px 14px;
+      cursor: pointer;
+      text-align: left;
+      border: 0;
+      background: transparent;
+    }
+    .notification + .notification { border-top: 1px solid #25252a; }
+    .notification:hover { background: #202024; }
+    .notification-title {
+      overflow: hidden;
+      color: #85858e;
+      font-size: 13px;
+      line-height: 19px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .notification.unread .notification-title { color: #8eb5ff; font-weight: 600; }
+    .notification-meta { margin-top: 4px; color: #74747d; font-size: 11px; line-height: 16px; }
+    .notification.unread .notification-meta { color: #95959e; }
+    .unread-dot {
+      position: absolute;
+      top: 18px;
+      right: 15px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #4c8dff;
+    }
+    .toast {
+      position: fixed;
+      z-index: 20;
+      bottom: 20px;
+      left: 50%;
+      width: max-content;
+      max-width: calc(100vw - 32px);
+      padding: 10px 14px;
+      transform: translate(-50%, 12px);
+      border: 1px solid #34343b;
+      border-radius: 9px;
+      background: #25252a;
+      box-shadow: 0 8px 24px #0007;
+      color: #dedee4;
+      font-size: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .15s ease, transform .15s ease;
+    }
+    .toast.visible { transform: translate(-50%, 0); opacity: 1; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+    @media (max-width: 350px) {
+      .address-divider { display: none; }
+      .stat { padding: 0 8px; }
+      .ticket-meta { gap: 4px; }
+      .ticket-number { font-size: 8px; }
+      .ticket-reason, .ticket-waited { font-size: 9px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="title-row">
+      <h1>工单板</h1>
+      <span class="address-divider" aria-hidden="true"></span>
+      <div class="address" title="https://taskboard.example.com">https://taskboard.example.com</div>
+      <details class="menu">
+        <summary aria-label="工单板菜单">⋯</summary>
+        <div class="menu-pop">
+          <button type="button" data-menu="更改平台地址">更改平台地址</button>
+          <button type="button" class="danger" data-menu="断开连接">断开连接</button>
+        </div>
+      </details>
+    </div>
+    <div class="stats" aria-label="概览统计">
+      <div class="stat">
+        <div class="stat-number accent">2<span class="stat-total">/ 3</span></div>
+        <div class="stat-label" title="协作中未读 / 总数">协作中未读</div>
+      </div>
+      <div class="stat">
+        <div class="stat-number">2</div>
+        <div class="stat-label">在等他</div>
+      </div>
+      <div class="stat">
+        <div class="stat-number accent" id="unread-number">3</div>
+        <div class="stat-label">通知未读</div>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="工单板列表">
+      <button class="tab" id="inbox-tab" type="button" role="tab" aria-selected="true" aria-controls="inbox-panel" tabindex="0">收件箱 <span class="tab-count">(5)</span></button>
+      <button class="tab" id="notifications-tab" type="button" role="tab" aria-selected="false" aria-controls="notifications-panel" tabindex="-1">通知 <span class="tab-count" id="notification-tab-count">(3)</span></button>
+    </nav>
+  </header>
+
+  <main class="content">
+    <section id="inbox-panel" role="tabpanel" aria-labelledby="inbox-tab">
+      <section class="group" aria-labelledby="new-group">
+        <h2 class="group-title" id="new-group">新指派 <span>2 项</span></h2>
+        <article class="ticket">
+          <div class="ticket-title" title="财务系统登录页偶发白屏">财务系统登录页偶发白屏</div>
+          <div class="ticket-meta">
+            <span class="ticket-number">20261120-001</span>
+            <span class="ticket-reason">新指派</span>
+            <span class="ticket-waited">等了 36 分钟</span>
+            <button class="open-button" type="button" data-open="20261120-001 财务系统登录页偶发白屏" aria-label="在浏览器打开 20261120-001">打开 <span aria-hidden="true">↗</span></button>
+          </div>
+        </article>
+        <article class="ticket">
+          <div class="ticket-title" title="移动端审批列表无法滚动">移动端审批列表无法滚动</div>
+          <div class="ticket-meta">
+            <span class="ticket-number">20261120-005</span>
+            <span class="ticket-reason">新指派</span>
+            <span class="ticket-waited">等了 5 小时 20 分</span>
+            <button class="open-button" type="button" data-open="20261120-005 移动端审批列表无法滚动" aria-label="在浏览器打开 20261120-005">打开 <span aria-hidden="true">↗</span></button>
+          </div>
+        </article>
+      </section>
+      <section class="group" aria-labelledby="delivered-group">
+        <h2 class="group-title" id="delivered-group">已交付待验收 <span>2 项</span></h2>
+        <article class="ticket">
+          <div class="ticket-title" title="月度报表导出格式错乱">月度报表导出格式错乱</div>
+          <div class="ticket-meta">
+            <span class="ticket-number">20261120-002</span>
+            <span class="ticket-reason">已交付</span>
+            <span class="ticket-waited">等了 18 分钟</span>
+            <button class="open-button" type="button" data-open="20261120-002 月度报表导出格式错乱" aria-label="在浏览器打开 20261120-002">打开 <span aria-hidden="true">↗</span></button>
+          </div>
+        </article>
+        <article class="ticket">
+          <div class="ticket-title" title="新同事入职账号初始化">新同事入职账号初始化</div>
+          <div class="ticket-meta">
+            <span class="ticket-number">20261120-004</span>
+            <span class="ticket-reason">已交付</span>
+            <span class="ticket-waited">等了 1 天</span>
+            <button class="open-button" type="button" data-open="20261120-004 新同事入职账号初始化" aria-label="在浏览器打开 20261120-004">打开 <span aria-hidden="true">↗</span></button>
+          </div>
+        </article>
+      </section>
+      <section class="group" aria-labelledby="replied-group">
+        <h2 class="group-title" id="replied-group">指派人回复待答复 <span>1 项</span></h2>
+        <article class="ticket">
+          <div class="ticket-title" title="客户资料同步失败告警">客户资料同步失败告警</div>
+          <div class="ticket-meta">
+            <span class="ticket-number">20261120-003</span>
+            <span class="ticket-reason">指派人回复</span>
+            <span class="ticket-waited">等了 1 小时 35 分</span>
+            <button class="open-button" type="button" data-open="20261120-003 客户资料同步失败告警" aria-label="在浏览器打开 20261120-003">打开 <span aria-hidden="true">↗</span></button>
+          </div>
+        </article>
+      </section>
+    </section>
+
+    <section id="notifications-panel" role="tabpanel" aria-labelledby="notifications-tab" hidden>
+      <div class="list-toolbar">
+        <span class="list-caption">最近 7 条 · 未读高亮</span>
+        <button class="mark-all" id="mark-all" type="button">全部已读</button>
+      </div>
+      <div class="notification-list">
+        <button class="notification unread" type="button" data-open="20261120-001 财务系统登录页偶发白屏">
+          <span class="sr-only">未读，</span>
+          <div class="notification-title">20261120-001 · 财务系统登录页偶发白屏</div>
+          <div class="notification-meta">新指派 · 12 分钟前</div>
+          <span class="unread-dot" aria-hidden="true"></span>
+        </button>
+        <button class="notification unread" type="button" data-open="20261120-002 月度报表导出格式错乱">
+          <span class="sr-only">未读，</span>
+          <div class="notification-title">20261120-002 · 月度报表导出格式错乱</div>
+          <div class="notification-meta">已交付 · 45 分钟前</div>
+          <span class="unread-dot" aria-hidden="true"></span>
+        </button>
+        <button class="notification unread" type="button" data-open="备份任务连续失败">
+          <span class="sr-only">未读，</span>
+          <div class="notification-title">备份任务连续失败</div>
+          <div class="notification-meta">备份失败 · 1 小时 30 分前</div>
+          <span class="unread-dot" aria-hidden="true"></span>
+        </button>
+        <button class="notification" type="button" data-open="20261120-003 客户资料同步失败告警">
+          <span class="sr-only">已读，</span>
+          <div class="notification-title">20261120-003 · 客户资料同步失败告警</div>
+          <div class="notification-meta">指派人回复 · 2 小时 20 分前</div>
+        </button>
+        <button class="notification" type="button" data-open="20261120-005 移动端审批列表无法滚动">
+          <span class="sr-only">已读，</span>
+          <div class="notification-title">20261120-005 · 移动端审批列表无法滚动</div>
+          <div class="notification-meta">退回修改 · 4 小时 20 分前</div>
+        </button>
+        <button class="notification" type="button" data-open="T-301 客服工作台搜索优化">
+          <span class="sr-only">已读，</span>
+          <div class="notification-title">T-301 · 客服工作台搜索优化</div>
+          <div class="notification-meta">协作者回复 · 6 小时 20 分前</div>
+        </button>
+        <button class="notification" type="button" data-open="T-302 审批流性能压测报告">
+          <span class="sr-only">已读，</span>
+          <div class="notification-title">T-302 · 审批流性能压测报告</div>
+          <div class="notification-meta">加入协作 · 8 小时 40 分前</div>
+        </button>
+      </div>
+    </section>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script>
+    const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+    function selectTab(selected) {
+      tabs.forEach((tab) => {
+        const active = tab === selected;
+        tab.setAttribute('aria-selected', String(active));
+        tab.tabIndex = active ? 0 : -1;
+        document.getElementById(tab.getAttribute('aria-controls')).hidden = !active;
+      });
+    }
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => selectTab(tab));
+      tab.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const next = tabs[(index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+        selectTab(next);
+        next.focus();
+      });
+    });
+    const toast = document.getElementById('toast');
+    let toastTimer;
+    function showToast(message) {
+      clearTimeout(toastTimer);
+      toast.textContent = message;
+      toast.classList.add('visible');
+      toastTimer = setTimeout(() => toast.classList.remove('visible'), 2200);
+    }
+    document.querySelectorAll('[data-open]').forEach((button) => {
+      button.addEventListener('click', () => showToast('将在浏览器打开 · ' + button.dataset.open));
+    });
+    document.querySelectorAll('[data-menu]').forEach((button) => {
+      button.addEventListener('click', () => {
+        button.closest('details').removeAttribute('open');
+        showToast('原型操作 · ' + button.dataset.menu);
+      });
+    });
+    document.getElementById('mark-all').addEventListener('click', (event) => {
+      document.querySelectorAll('.notification.unread').forEach((item) => {
+        item.classList.remove('unread');
+        const dot = item.querySelector('.unread-dot');
+        if (dot) dot.remove();
+        const state = item.querySelector('.sr-only');
+        if (state) state.textContent = '已读，';
+      });
+      const unreadNumber = document.getElementById('unread-number');
+      unreadNumber.textContent = '0';
+      unreadNumber.classList.remove('accent');
+      document.getElementById('notification-tab-count').textContent = '(0)';
+      event.currentTarget.hidden = true;
+      showToast('已将全部通知标为已读');
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') document.querySelector('.menu').removeAttribute('open');
+    });
+  </script>
+</body>
+</html>

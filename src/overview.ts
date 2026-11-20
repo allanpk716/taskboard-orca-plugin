@@ -45,6 +45,12 @@ export interface InboxActor {
   action?: 'assigned' | 'reassigned' | (string & {})
 }
 
+/** 平台术语「往来对象」：一张工单在当前成员看来的另一方。 */
+export interface Counterpart {
+  type: 'member' | 'guest' | 'self' | 'pending_triage' | (string & {})
+  name: string | null
+}
+
 export interface RawInboxItem {
   number: string
   title: string
@@ -52,6 +58,8 @@ export interface RawInboxItem {
   reason: string
   reason_code: InboxReasonCode | (string & {})
   trigger: InboxActor
+  counterpart: Counterpart
+  read_new: boolean
   last_reply_at: string | null
   created_at: string
 }
@@ -67,6 +75,7 @@ export interface RawTicketItem {
   url: string
   title: string
   unread: boolean
+  waiting_on?: { text?: string } | null
 }
 
 export interface RawTicketListResponse {
@@ -116,8 +125,19 @@ export interface OverviewInboxItem {
   reason: string
   reason_code: InboxReasonCode
   trigger: InboxActor
+  counterpart: Counterpart
+  read_new: boolean
+  waited_since: string
   last_reply_at: string | null
   created_at: string
+}
+
+export interface OverviewCollaboratingItem {
+  number: string
+  title: string
+  url: string
+  unread: boolean
+  waiting_on_text: string | null
 }
 
 export interface Overview {
@@ -125,9 +145,78 @@ export interface Overview {
     by_reason: Record<InboxReasonCode, number>
     items: OverviewInboxItem[]
   } | null
-  collaborating: { total: number; unread: number } | null
-  waiting: { total: number } | null
+  collaborating: {
+    total: number
+    unread: number
+    items: OverviewCollaboratingItem[]
+  } | null
+  /** key 见 counterpartKey，组名见 counterpartLabel。 */
+  waiting: {
+    total: number
+    by_counterpart: Record<string, number>
+  } | null
   unread_notifications: number
+}
+
+/** 收件箱里「访客动了、轮到我」的原因码。 */
+export const GUEST_TURN_REASON_CODES: readonly InboxReasonCode[] = [
+  'guest_replied',
+  'guest_completed',
+  'guest_revised',
+  'guest_not_completed'
+]
+
+export function counterpartKey(counterpart: Counterpart): string {
+  return `${counterpart.type}:${counterpart.name ?? ''}`
+}
+
+export function counterpartLabel(counterpart: Counterpart): string {
+  if (counterpart.type === 'guest') {
+    return `访客 · ${counterpart.name ?? '未署名'}`
+  }
+  if (counterpart.type === 'self') return '我自己'
+  if (counterpart.type === 'pending_triage') return '待初筛'
+  return counterpart.name ?? '其他成员'
+}
+
+export interface InboxCounterpartGroup {
+  key: string
+  label: string
+  items: OverviewInboxItem[]
+  /** 该往来对象名下轮到对方的工单数，仅参考，不计入收件箱。 */
+  waitingCount: number
+}
+
+export function groupInboxByCounterpart(
+  items: readonly OverviewInboxItem[],
+  waitingByCounterpart: Record<string, number> = {}
+): InboxCounterpartGroup[] {
+  const groups = new Map<string, OverviewInboxItem[]>()
+  for (const item of items) {
+    const key = counterpartKey(item.counterpart)
+    const bucket = groups.get(key)
+    if (bucket === undefined) groups.set(key, [item])
+    else bucket.push(item)
+  }
+  return [...groups.entries()].map(([key, groupItems]) => ({
+    key,
+    label: counterpartLabel(groupItems[0].counterpart),
+    items: [...groupItems].sort(
+      (a, b) => Date.parse(a.waited_since) - Date.parse(b.waited_since)
+    ),
+    waitingCount: waitingByCounterpart[key] ?? 0
+  }))
+}
+
+export function waitingCountsByCounterpart(
+  items: readonly RawInboxItem[]
+): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const item of items) {
+    const key = counterpartKey(item.counterpart)
+    counts[key] = (counts[key] ?? 0) + 1
+  }
+  return counts
 }
 
 export interface TaskboardNotification extends RawNotificationItem {
@@ -189,6 +278,9 @@ export function buildOverview(input: OverviewInput): Overview {
               reason: item.reason,
               reason_code: inboxReason(item.reason_code),
               trigger: item.trigger,
+              counterpart: item.counterpart,
+              read_new: item.read_new,
+              waited_since: item.last_reply_at ?? item.created_at,
               last_reply_at: item.last_reply_at,
               created_at: item.created_at
             }))
@@ -199,9 +291,22 @@ export function buildOverview(input: OverviewInput): Overview {
         : {
             total: input.collaborating.total,
             unread: input.collaborating.items.filter((item) => item.unread)
-              .length
+              .length,
+            items: input.collaborating.items.map((item) => ({
+              number: item.number,
+              title: item.title,
+              url: absoluteUrl(input.platformUrl, item.url),
+              unread: item.unread,
+              waiting_on_text: item.waiting_on?.text ?? null
+            }))
           },
-    waiting: input.waiting === null ? null : { total: input.waiting.count },
+    waiting:
+      input.waiting === null
+        ? null
+        : {
+            total: input.waiting.count,
+            by_counterpart: waitingCountsByCounterpart(input.waiting.items)
+          },
     unread_notifications: input.unreadNotifications.unread_count
   }
 }

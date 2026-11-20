@@ -40,17 +40,37 @@ async function mountState(state: TaskboardSnapshot['state']) {
   return await mount(panel, { host })
 }
 
-test('renders the overview, notifications, and inbox when connected', async () => {
+test('renders the filters, counterpart groups, and collapsed notifications when connected', async () => {
   const current = await mountState('connected')
 
-  assert.ok(current.find({ text: '概览' }))
-  assert.ok(current.find({ text: '通知' }))
-  assert.ok(current.find({ text: '收件箱' }))
+  assert.ok(current.find({ text: /等我处理/ }))
+  assert.ok(current.find({ text: /访客新回复/ }))
+  assert.ok(current.find({ text: /协作中/ }))
+  assert.ok(current.find({ text: '已连接' }))
   assert.ok(current.find({ text: /20261120-001 · 财务系统登录页偶发白屏/ }))
   assert.ok(current.find({ text: /20261120-002 · 月度报表导出格式错乱/ }))
+  assert.ok(current.find({ text: /王工 ×1/ }))
+  assert.ok(current.find({ text: /另等他 1/ }))
+  assert.ok(current.find({ text: /3 条通知未读/ }))
+  assert.ok(current.find({ label: '展开通知列表' }))
   assert.ok(current.find({ label: '工单板菜单' }))
   assert.deepEqual(current.errors, [])
   assert.deepEqual(current.refusals, [])
+  await current.unmount()
+})
+
+test('switches to the guest and collaborating filters', async () => {
+  const current = await mountState('connected')
+
+  await current.press({ text: /访客新回复/ })
+  assert.ok(current.find({ text: /访客 · 检验科-张三 ×2/ }))
+  assert.ok(current.find({ text: /T-101 · 检验设备周期校准反馈/ }))
+  assert.ok(!current.find({ text: /20261120-001 · 财务系统登录页偶发白屏/ }))
+
+  await current.press({ text: /协作中/ })
+  assert.ok(current.find({ text: /轮到 李工（指派人） ×2/ }))
+  assert.ok(current.find({ text: /客服工作台搜索优化/ }))
+  assert.deepEqual(current.errors, [])
   await current.unmount()
 })
 
@@ -75,6 +95,7 @@ test('opens a notification in the browser and marks only it read after success',
   })
   const current = await mount(panel, { host })
 
+  await current.press({ label: '展开通知列表' })
   await current.press({ testId: 'open-notification-9012' })
   assert.deepEqual(openedUrls, ['https://taskboard.example.com/t/20261120-001'])
   assert.deepEqual(marked, [[9012]])
@@ -249,8 +270,10 @@ test('renders address, connection, keychain, refresh, and overview-unavailable s
     requests: { 'taskboard.getState': () => connected }
   })
   const connectedPanel = await mount(panel, { host: connectedHost })
-  assert.ok(connectedPanel.find({ text: '刷新失败：连接超时' }))
-  assert.ok(connectedPanel.findAll({ text: '概览接口尚未开放（等平台升级）' }).length >= 1)
+  assert.ok(connectedPanel.find({ text: /刷新失败：连接超时/ }))
+  assert.ok(
+    connectedPanel.findAll({ text: /概览接口尚未开放（等平台升级）/ }).length >= 1
+  )
   assert.deepEqual(connectedPanel.errors, [])
   await connectedPanel.unmount()
 })

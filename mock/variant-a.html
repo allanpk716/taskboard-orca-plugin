@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>工单板 · 待办优先</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      margin: 0;
+      background: #101012;
+      color: #ececf1;
+      font-family: -apple-system, "PingFang SC", sans-serif;
+      font-size: 14px;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, summary { font: inherit; }
+    button { color: inherit; }
+    button, summary { -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, summary:focus-visible {
+      outline: 2px solid #4c8dff;
+      outline-offset: 2px;
+    }
+    .panel {
+      width: 100%;
+      max-width: 390px;
+      min-width: 0;
+      margin: 0 auto;
+      padding: 16px 14px 28px;
+    }
+    .header { position: relative; margin-bottom: 14px; }
+    .title-row { display: flex; align-items: center; gap: 10px; }
+    h1 { margin: 0; font-size: 21px; line-height: 30px; letter-spacing: -.02em; }
+    .address {
+      min-width: 0;
+      margin-left: auto;
+      overflow: hidden;
+      color: #777780;
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .menu { position: relative; flex: 0 0 auto; }
+    .menu summary {
+      display: grid;
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      list-style: none;
+      place-items: center;
+      border-radius: 8px;
+      color: #b7b7bf;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .menu summary::-webkit-details-marker { display: none; }
+    .menu summary:hover { background: #1e1e21; }
+    .menu-pop {
+      position: absolute;
+      z-index: 10;
+      top: 38px;
+      right: 0;
+      width: 164px;
+      padding: 5px;
+      border: 1px solid #303036;
+      border-radius: 10px;
+      background: #1e1e21;
+      box-shadow: 0 12px 28px #0008;
+    }
+    .menu-pop button {
+      width: 100%;
+      padding: 10px 11px;
+      cursor: pointer;
+      text-align: left;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      font-size: 13px;
+    }
+    .menu-pop button:hover { background: #29292e; }
+    .menu-pop .danger { color: #e89393; }
+    .status-bar {
+      display: flex;
+      align-items: center;
+      min-height: 34px;
+      margin-top: 8px;
+      padding: 7px 10px;
+      border: 1px solid #25252a;
+      border-radius: 9px;
+      background: #171719;
+      color: #a4a4ac;
+      font-size: 12px;
+    }
+    .connection { display: inline-flex; align-items: center; gap: 7px; }
+    .online-dot { width: 7px; height: 7px; border-radius: 50%; background: #59b98a; }
+    .unread-status { margin-left: auto; color: #83aeff; font-weight: 600; }
+    .section-heading {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin: 18px 2px 10px;
+    }
+    .section-heading h2 { margin: 0; font-size: 16px; line-height: 22px; }
+    .section-heading span { color: #85858e; font-size: 12px; }
+    .inbox {
+      overflow: hidden;
+      border: 1px solid #29292e;
+      border-radius: 12px;
+      background: #1a1a1d;
+    }
+    .reason-group + .reason-group { border-top: 1px solid #2b2b30; }
+    .group-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 12px 13px 7px;
+      color: #b8b8c0;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .group-title span { color: #6f6f78; font-size: 11px; font-weight: 500; }
+    .ticket { padding: 9px 12px 11px; }
+    .ticket + .ticket { border-top: 1px solid #242428; }
+    .ticket-line { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
+    .ticket-number { flex: 0 0 auto; color: #74747d; font-size: 10px; font-variant-numeric: tabular-nums; }
+    .ticket-title {
+      min-width: 0;
+      overflow: hidden;
+      font-size: 14px;
+      font-weight: 550;
+      line-height: 21px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ticket-meta { display: flex; min-width: 0; align-items: center; gap: 8px; margin-top: 6px; }
+    .reason-badge {
+      flex: 0 0 auto;
+      padding: 3px 7px;
+      border: 1px solid #2d4772;
+      border-radius: 5px;
+      background: #1d2b43;
+      color: #9dbdff;
+      font-size: 10px;
+      line-height: 14px;
+    }
+    .reason-badge.neutral { border-color: #3a3a41; background: #242428; color: #b0b0b8; }
+    .waited { min-width: 0; color: #8f8f98; font-size: 11px; white-space: nowrap; }
+    .open-button {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 3px;
+      min-height: 28px;
+      margin: -3px -3px -3px auto;
+      padding: 3px 6px 3px 9px;
+      cursor: pointer;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: #82adff;
+      font-size: 12px;
+    }
+    .open-button:hover { background: #242c3a; }
+    .notifications {
+      margin-top: 16px;
+      overflow: hidden;
+      border: 1px solid #29292e;
+      border-radius: 12px;
+      background: #1a1a1d;
+    }
+    .notification-summary {
+      display: flex;
+      align-items: center;
+      min-height: 52px;
+      padding: 12px 14px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .notification-summary::-webkit-details-marker { display: none; }
+    .summary-title { font-size: 14px; font-weight: 600; }
+    .summary-caption { margin-left: 8px; color: #777780; font-size: 11px; }
+    .chevron { margin-left: auto; color: #8a8a93; font-size: 17px; transition: transform .16s ease; }
+    details[open] .chevron { transform: rotate(180deg); }
+    .notification-list { border-top: 1px solid #29292e; }
+    .notification {
+      position: relative;
+      display: block;
+      width: 100%;
+      padding: 11px 32px 11px 14px;
+      cursor: pointer;
+      text-align: left;
+      border: 0;
+      background: transparent;
+    }
+    .notification + .notification { border-top: 1px solid #242428; }
+    .notification:hover { background: #202024; }
+    .notification-title {
+      overflow: hidden;
+      color: #8c8c95;
+      font-size: 13px;
+      line-height: 19px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .notification.unread .notification-title { color: #ececf1; font-weight: 600; }
+    .notification-meta { margin-top: 3px; color: #73737c; font-size: 11px; line-height: 16px; }
+    .notification.unread .notification-meta { color: #92929b; }
+    .unread-dot {
+      position: absolute;
+      top: 18px;
+      right: 15px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #4c8dff;
+    }
+    .bottom-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      margin-top: 16px;
+      padding: 13px 0;
+      border: 1px solid #25252a;
+      border-radius: 10px;
+      background: #161618;
+    }
+    .stat { padding: 0 14px; }
+    .stat + .stat { border-left: 1px solid #2a2a2e; }
+    .stat-label { color: #797982; font-size: 11px; }
+    .stat-value { margin-top: 4px; color: #b5b5bd; font-size: 12px; }
+    .stat-value strong { margin-right: 3px; color: #d7d7dd; font-size: 17px; font-weight: 600; }
+    .stat-value .accent { color: #79a7ff; }
+    .toast {
+      position: fixed;
+      z-index: 20;
+      bottom: 20px;
+      left: 50%;
+      width: max-content;
+      max-width: calc(100vw - 32px);
+      padding: 10px 14px;
+      transform: translate(-50%, 12px);
+      border: 1px solid #34343b;
+      border-radius: 9px;
+      background: #25252a;
+      box-shadow: 0 8px 24px #0007;
+      color: #dedee4;
+      font-size: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .15s ease, transform .15s ease;
+    }
+    .toast.visible { transform: translate(-50%, 0); opacity: 1; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+    @media (max-width: 350px) {
+      .address { display: none; }
+      .summary-caption { display: none; }
+      .ticket-number { font-size: 9px; }
+      .ticket-title { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <header class="header">
+      <div class="title-row">
+        <h1>工单板</h1>
+        <div class="address" title="https://taskboard.example.com">taskboard.example.com</div>
+        <details class="menu">
+          <summary aria-label="工单板菜单">⋯</summary>
+          <div class="menu-pop">
+            <button type="button" data-menu="更改平台地址">更改平台地址</button>
+            <button type="button" class="danger" data-menu="断开连接">断开连接</button>
+          </div>
+        </details>
+      </div>
+      <div class="status-bar" aria-label="连接正常，3 条通知未读">
+        <span class="connection"><span class="online-dot"></span>连接正常</span>
+        <span class="unread-status">3 条通知未读</span>
+      </div>
+    </header>
+
+    <section aria-labelledby="inbox-heading">
+      <div class="section-heading">
+        <h2 id="inbox-heading">轮到你处理</h2>
+        <span>5 项 · 等待久的在前</span>
+      </div>
+      <div class="inbox">
+        <section class="reason-group" aria-labelledby="group-new">
+          <h3 class="group-title" id="group-new">新指派 <span>2</span></h3>
+          <article class="ticket">
+            <div class="ticket-line">
+              <span class="ticket-number">20261120-005</span>
+              <span class="ticket-title" title="移动端审批列表无法滚动">移动端审批列表无法滚动</span>
+            </div>
+            <div class="ticket-meta">
+              <span class="reason-badge">新指派</span>
+              <span class="waited">等了 5 小时 20 分</span>
+              <button class="open-button" type="button" data-open="20261120-005 移动端审批列表无法滚动" aria-label="在浏览器打开 20261120-005">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+          <article class="ticket">
+            <div class="ticket-line">
+              <span class="ticket-number">20261120-001</span>
+              <span class="ticket-title" title="财务系统登录页偶发白屏">财务系统登录页偶发白屏</span>
+            </div>
+            <div class="ticket-meta">
+              <span class="reason-badge">新指派</span>
+              <span class="waited">等了 36 分钟</span>
+              <button class="open-button" type="button" data-open="20261120-001 财务系统登录页偶发白屏" aria-label="在浏览器打开 20261120-001">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+        </section>
+        <section class="reason-group" aria-labelledby="group-delivered">
+          <h3 class="group-title" id="group-delivered">已交付待验收 <span>2</span></h3>
+          <article class="ticket">
+            <div class="ticket-line">
+              <span class="ticket-number">20261120-004</span>
+              <span class="ticket-title" title="新同事入职账号初始化">新同事入职账号初始化</span>
+            </div>
+            <div class="ticket-meta">
+              <span class="reason-badge neutral">已交付</span>
+              <span class="waited">等了 1 天</span>
+              <button class="open-button" type="button" data-open="20261120-004 新同事入职账号初始化" aria-label="在浏览器打开 20261120-004">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+          <article class="ticket">
+            <div class="ticket-line">
+              <span class="ticket-number">20261120-002</span>
+              <span class="ticket-title" title="月度报表导出格式错乱">月度报表导出格式错乱</span>
+            </div>
+            <div class="ticket-meta">
+              <span class="reason-badge neutral">已交付</span>
+              <span class="waited">等了 18 分钟</span>
+              <button class="open-button" type="button" data-open="20261120-002 月度报表导出格式错乱" aria-label="在浏览器打开 20261120-002">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+        </section>
+        <section class="reason-group" aria-labelledby="group-replied">
+          <h3 class="group-title" id="group-replied">指派人回复待答复 <span>1</span></h3>
+          <article class="ticket">
+            <div class="ticket-line">
+              <span class="ticket-number">20261120-003</span>
+              <span class="ticket-title" title="客户资料同步失败告警">客户资料同步失败告警</span>
+            </div>
+            <div class="ticket-meta">
+              <span class="reason-badge">指派人回复</span>
+              <span class="waited">等了 1 小时 35 分</span>
+              <button class="open-button" type="button" data-open="20261120-003 客户资料同步失败告警" aria-label="在浏览器打开 20261120-003">打开 <span aria-hidden="true">↗</span></button>
+            </div>
+          </article>
+        </section>
+      </div>
+    </section>
+
+    <details class="notifications">
+      <summary class="notification-summary">
+        <span class="summary-title">3 条未读通知</span>
+        <span class="summary-caption">最近 7 条</span>
+        <span class="chevron" aria-hidden="true">⌄</span>
+      </summary>
+      <div class="notification-list">
+        <button class="notification unread" type="button" data-open="20261120-001 财务系统登录页偶发白屏">
+          <span class="sr-only">未读，</span>
+          <div class="notification-title">20261120-001 · 财务系统登录页偶发白屏</div>
+          <div class="notification-meta">新指派 · 12 分钟前</div>
+          <span class="unread-dot" aria-hidden="true"></span>
+        </button>
+        <button class="notification unread" type="button" data-open="20261120-002 月度报表导出格式错乱">
+          <span class="sr-only">未读，</span>
+          <div class="notification-title">20261120-002 · 月度报表导出格式错乱</div>
+          <div class="notification-meta">已交付 · 45 分钟前</div>
+          <span class="unread-dot" aria-hidden="true"></span>
+        </button>
+        <button class="notification unread" type="button" data-open="备份任务连续失败">
+          <span class="sr-only">未读，</span>
+          <div class="notification-title">备份任务连续失败</div>
+          <div class="notification-meta">备份失败 · 1 小时 30 分前</div>
+          <span class="unread-dot" aria-hidden="true"></span>
+        </button>
+        <button class="notification" type="button" data-open="20261120-003 客户资料同步失败告警">
+          <span class="sr-only">已读，</span>
+          <div class="notification-title">20261120-003 · 客户资料同步失败告警</div>
+          <div class="notification-meta">指派人回复 · 2 小时 20 分前</div>
+        </button>
+        <button class="notification" type="button" data-open="20261120-005 移动端审批列表无法滚动">
+          <span class="sr-only">已读，</span>
+          <div class="notification-title">20261120-005 · 移动端审批列表无法滚动</div>
+          <div class="notification-meta">退回修改 · 4 小时 20 分前</div>
+        </button>
+        <button class="notification" type="button" data-open="T-301 客服工作台搜索优化">
+          <span class="sr-only">已读，</span>
+          <div class="notification-title">T-301 · 客服工作台搜索优化</div>
+          <div class="notification-meta">协作者回复 · 6 小时 20 分前</div>
+        </button>
+        <button class="notification" type="button" data-open="T-302 审批流性能压测报告">
+          <span class="sr-only">已读，</span>
+          <div class="notification-title">T-302 · 审批流性能压测报告</div>
+          <div class="notification-meta">加入协作 · 8 小时 40 分前</div>
+        </button>
+      </div>
+    </details>
+
+    <footer class="bottom-stats" aria-label="其他概览统计">
+      <div class="stat">
+        <div class="stat-label">协作中</div>
+        <div class="stat-value"><strong class="accent">2</strong> 未读 / 共 3 项</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">在等他</div>
+        <div class="stat-value"><strong>2</strong> 项</div>
+      </div>
+    </footer>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script>
+    const toast = document.getElementById('toast');
+    let toastTimer;
+    function showToast(message) {
+      clearTimeout(toastTimer);
+      toast.textContent = message;
+      toast.classList.add('visible');
+      toastTimer = setTimeout(() => toast.classList.remove('visible'), 2200);
+    }
+    document.querySelectorAll('[data-open]').forEach((button) => {
+      button.addEventListener('click', () => showToast('将在浏览器打开 · ' + button.dataset.open));
+    });
+    document.querySelectorAll('[data-menu]').forEach((button) => {
+      button.addEventListener('click', () => {
+        button.closest('details').removeAttribute('open');
+        showToast('原型操作 · ' + button.dataset.menu);
+      });
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') document.querySelector('.menu').removeAttribute('open');
+    });
+  </script>
+</body>
+</html>

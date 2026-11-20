@@ -659,6 +659,6 @@ test('allows tests to inject the retained mock data source', async () => {
   const platform = await startPlatform([11])
   const { worker } = await mountWorkerWithPlatform(platform, { token: 'tbc_test' })
   const current = await worker.request('taskboard.getState')
-  assert.equal(current.overview?.collaborating?.total, 3)
+  assert.equal(current.overview?.collaborating?.total, 4)
   assert.equal(current.notifications.length, 7)
 })

@@ -1,6 +1,7 @@
 import {
   buildNotifications,
   buildOverview,
+  type Counterpart,
   type RawInboxItem,
   type RawInboxResponse,
   type RawNotificationItem,
@@ -19,15 +20,29 @@ function minutesAgo(now: number, minutes: number): string {
   return new Date(now - minutes * 60_000).toISOString()
 }
 
+const memberCounterpart = (name: string): Counterpart => ({
+  type: 'member',
+  name
+})
+const guestCounterpart = (name: string): Counterpart => ({ type: 'guest', name })
+
+const COUNTERPART_SELF: Counterpart = { type: 'self', name: '陈工' }
+const COUNTERPART_PENDING_TRIAGE: Counterpart = {
+  type: 'pending_triage',
+  name: null
+}
+
 function inboxItem(
   number: string,
   title: string,
   reason: string,
   reasonCode: RawInboxItem['reason_code'],
   triggerName: string,
+  counterpart: Counterpart,
   lastReplyMinutes: number | null,
   createdMinutes: number,
-  now: number
+  now: number,
+  readNew = false
 ): RawInboxItem {
   return {
     number,
@@ -36,6 +51,8 @@ function inboxItem(
     reason,
     reason_code: reasonCode,
     trigger: { type: 'member', name: triggerName },
+    counterpart,
+    read_new: readNew,
     last_reply_at:
       lastReplyMinutes === null ? null : minutesAgo(now, lastReplyMinutes),
     created_at: minutesAgo(now, createdMinutes)
@@ -45,9 +62,16 @@ function inboxItem(
 function ticketItem(
   number: string,
   title: string,
-  unread: boolean
+  unread: boolean,
+  waitingOnText: string
 ): RawTicketItem {
-  return { number, url: `/t/${number}`, title, unread }
+  return {
+    number,
+    url: `/t/${number}`,
+    title,
+    unread,
+    waiting_on: { text: waitingOnText }
+  }
 }
 
 function notificationItem(
@@ -82,38 +106,21 @@ export function createMockDataSource(now = Date.now()): TaskboardDataSource {
       '新指派给你',
       'new',
       '李经理',
+      memberCounterpart('李经理'),
       null,
       36,
-      now
+      now,
+      true
     ),
     inboxItem(
-      '20261120-002',
-      '月度报表导出格式错乱',
-      '已交付，待你验收',
-      'delivered',
-      '王工',
-      18,
-      290,
-      now
-    ),
-    inboxItem(
-      '20261120-003',
-      '客户资料同步失败告警',
-      '指派人回复了，待你答复',
-      'assignee_replied',
-      '陈工',
-      95,
-      430,
-      now
-    ),
-    inboxItem(
-      '20261120-004',
-      '新同事入职账号初始化',
-      '已交付，待你验收',
-      'delivered',
-      '赵专员',
-      null,
-      1_440,
+      'T-106',
+      '机房巡检异常项整改',
+      '新指派给你',
+      'new',
+      '李经理',
+      memberCounterpart('李经理'),
+      2_880,
+      2_940,
       now
     ),
     inboxItem(
@@ -122,8 +129,100 @@ export function createMockDataSource(now = Date.now()): TaskboardDataSource {
       '新指派给你',
       'new',
       '周经理',
+      memberCounterpart('周经理'),
       320,
       610,
+      now
+    ),
+    inboxItem(
+      '20261120-002',
+      '月度报表导出格式错乱',
+      '已交付，待你验收',
+      'delivered',
+      '王工',
+      memberCounterpart('王工'),
+      18,
+      290,
+      now,
+      true
+    ),
+    inboxItem(
+      '20261120-004',
+      '新同事入职账号初始化',
+      '已交付，待你验收',
+      'delivered',
+      '赵专员',
+      memberCounterpart('赵专员'),
+      null,
+      1_440,
+      now
+    ),
+    inboxItem(
+      '20261120-003',
+      '客户资料同步失败告警',
+      '指派人回复了，待你答复',
+      'assignee_replied',
+      '陈工',
+      memberCounterpart('陈工'),
+      95,
+      430,
+      now
+    ),
+    inboxItem(
+      'T-101',
+      '检验设备周期校准反馈',
+      '访客回复了',
+      'guest_replied',
+      '检验科-张三',
+      guestCounterpart('检验科-张三'),
+      26,
+      500,
+      now,
+      true
+    ),
+    inboxItem(
+      'T-102',
+      '检验报告模板字段补全',
+      '访客补全了说明',
+      'guest_completed',
+      '检验科-张三',
+      guestCounterpart('检验科-张三'),
+      400,
+      800,
+      now
+    ),
+    inboxItem(
+      'T-103',
+      '供应商资质文件更新',
+      '访客修订了说明',
+      'guest_revised',
+      '供应商-周敏',
+      guestCounterpart('供应商-周敏'),
+      1_500,
+      2_100,
+      now
+    ),
+    inboxItem(
+      'T-104',
+      '内部知识库条目整理',
+      '你的 Agent 回复了',
+      'agent_replied',
+      '陈工的 Agent',
+      COUNTERPART_SELF,
+      8,
+      120,
+      now,
+      true
+    ),
+    inboxItem(
+      'T-105',
+      '新反馈待分流',
+      '待初筛',
+      'pending_triage',
+      '反馈入口',
+      COUNTERPART_PENDING_TRIAGE,
+      42,
+      42,
       now
     )
   ]
@@ -135,6 +234,7 @@ export function createMockDataSource(now = Date.now()): TaskboardDataSource {
       '发起人回复了',
       'creator_replied',
       '钱分析师',
+      memberCounterpart('李经理'),
       55,
       760,
       now
@@ -145,16 +245,29 @@ export function createMockDataSource(now = Date.now()): TaskboardDataSource {
       '访客回复了',
       'guest_replied',
       '孙供应商',
+      memberCounterpart('周经理'),
       210,
       980,
+      now
+    ),
+    inboxItem(
+      'T-203',
+      '检验耗材领用登记反馈',
+      '访客回复了',
+      'guest_replied',
+      '检验科-张三',
+      guestCounterpart('检验科-张三'),
+      120,
+      390,
       now
     )
   ]
 
   const collaboratingItems: RawTicketItem[] = [
-    ticketItem('T-301', '客服工作台搜索优化', true),
-    ticketItem('T-302', '审批流性能压测报告', false),
-    ticketItem('T-303', '数据看板权限说明补全', true)
+    ticketItem('T-301', '客服工作台搜索优化', true, '李工（指派人）'),
+    ticketItem('T-303', '数据看板权限说明补全', true, '访客'),
+    ticketItem('T-302', '审批流性能压测报告', false, '王工（发起人）'),
+    ticketItem('T-304', '值班表同步脚本改造', false, '李工（指派人）')
   ]
 
   const notificationItems: RawNotificationItem[] = [
