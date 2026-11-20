@@ -45,6 +45,8 @@ interface HostContext {
   effect?(setup: () => unknown): unknown
   /** 事件挂接(fiber 保活的关键资源;官方桥 hooks-claude-code 与 ferryman-dsh 同用面) */
   on?(event: string, handler: (...args: never[]) => unknown): (() => void) | unknown
+  /** 服务注册面(ferryman-dsh 同用;provider 身份是 fiber 的强存活资源) */
+  provide?(name: string, value: unknown): unknown
 }
 
 interface WebServerLike {
@@ -148,7 +150,7 @@ function callbackPage(response: ServerResponse, status: number, title: string, b
  *     活动资源、常驻、不阻塞——正解。
  * webServer 走运行时探测 + 5 秒重试(宿主就绪晚于插件加载)。
  */
-export function apply(ctx: HostContext, config: Record<string, unknown> = {}): void {
+export function apply(ctx: HostContext, config: Record<string, unknown> = {}): (() => void) | void {
   const log = ctx.logger ?? console
   let closed = false
   let stored = loadStored()
@@ -665,26 +667,19 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
     }
   }
 
-  // 保活:挂一个事件监听进 cordis(fiber 因此有活动资源而常驻,且不阻塞
-  // 宿主 ready——ferryman-dsh 生产同款形态)。app-boot/config-reload 是宿主
-  // 一定声明的事件(patch 重组时 emit),这里只需要"注册"这个动作本身。
+  // 保活三件套(ferryman-dsh 生产形态的完整模仿):ctx.on 挂事件、
+  // ctx.provide 注册服务(provider 身份)、apply 返回 disposer。
   if (typeof ctx.on === 'function') {
-    const off = ctx.on('app-boot/config-reload', () => {})
-    if (typeof ctx.effect === 'function') {
-      ctx.effect(() => {
-        fileLog('disposed', `插件 fiber 被清理 state=${probe.state}`)
-        closed = true
-        stopStream()
-        pendingConnectionAbort?.abort()
-        if (typeof off === 'function') off()
-      })
-    }
-  } else if (typeof ctx.effect === 'function') {
-    ctx.effect(() => {
-      fileLog('disposed', `插件 fiber 被清理(无 ctx.on 降级路径) state=${probe.state}`)
-      closed = true
-      stopStream()
-      pendingConnectionAbort?.abort()
-    })
+    ctx.on('app-boot/config-reload', () => {})
+  }
+  if (typeof ctx.provide === 'function') {
+    ctx.provide('taskboardProbe', { getState: () => probe, version: '0.1.0-probe' })
+  }
+
+  return () => {
+    fileLog('disposed', `插件 fiber 被清理 state=${probe.state}`)
+    closed = true
+    stopStream()
+    pendingConnectionAbort?.abort()
   }
 }
