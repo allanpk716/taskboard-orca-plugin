@@ -45,6 +45,13 @@
 
 左栏面板(三类筛选复刻 + `panellist.trailing` 计数)+ 连接账号(面板按钮触发 PKCE)+ 标已读 + 断开连接 + 401 清凭证回连接触发态(照搬 Orca 版状态机)+ 通知呈现(系统通知若探针跑通则含弹通知,否则 badge + 面板列表)。估计 3~5 天。
 
+## MVP 实战结论(2026-11-20 深夜,train3060 web 实验场 + desktop 全链路验证后追加)
+
+17. **内嵌打开的实做面**:`ctx.sidebarRight.openTab('browser', {params:{url}})`(ui-sidebar-right service)有无 session 版本——自解析 on-screen session;browser kind **Desktop 默认启用、Web profile 默认禁用**。client 侧不 inject 该服务(host 侧 epoch 连坐教训同源),apply 时 `ctx.get('sidebarRight')` 运行时探测 + try/catch,失败兜底 `window.open`——Web 形态自动落外部浏览器,与拍板 8 殊途同归。
+18. **host/client 分工定型**:聚合在 host(5 路拉取 + buildOverview + 400ms 防抖 + 5 分钟兜底,全盘照搬 Orca worker.refresh),分组/三类过滤在 client(`src/overview.ts` 纯函数的 JS 副本,client 零构建链不引 TS)。SSE 通知→`pendingNotifications` 队列→client 轮询弹出→POST ack 清空(系统通知由 renderer 消费,host 不弹)。
+19. **实验场实操**(Start-Job 的坑):PowerShell job 随 sshmgr 会话死——宿主活不过单条命令;`Start-Process` detached 同样被会话回收。**正解:`exec_background` 三件套跑宿主**(broker 维持连接),配合 `forward_port` 隧道 + 本机 Playwright 截图验证 client 半边(快照 yml 比截图更可靠:三类计数「14 等我处理/4 访客新回复/0 协作中」、分组「程宇恒 ×3 另等他 3」全部可 grep)。
+20. **共享状态文件的雷**:web 实验宿主与 desktop 共用 `~/.dsh/taskboard-plugin.json`——实验场里**不能点「断开连接」**(会 revoke 平台凭证,desktop 一起失效),「标已读」也动真数据;两者只在 host 冒烟里验证。双宿主并存的 SSE 引用计数无障碍(设计已述)。
+
 ## 已知非目标
 
 - 双端提醒去重/开关;
