@@ -14,9 +14,19 @@ async function mountState(state: TaskboardSnapshot['state']) {
         platformUrl,
         overview: null,
         notifications: [],
-        latestNotificationId: null
+        latestNotificationId: null,
+        unreadNotificationCount: null,
+        addressError: null,
+        refreshError: null
       }),
-      'connection.connect': () => snapshot,
+      'connection.begin': () => ({
+        authorizationUrl: 'https://taskboard.example.com/client/connect?port=1',
+        snapshot: { ...snapshot, connection: { phase: 'waiting', message: '等待浏览器确认…' } }
+      }),
+      'connection.cancel': () => ({
+        ...snapshot,
+        connection: { phase: 'cancelled', message: '已取消连接' }
+      }),
       'connection.disconnect': () => ({ ...snapshot, state: 'disconnected', overview: null }),
       'notifications.markRead': ({ ids }) => ({
         ...snapshot,
@@ -116,14 +126,154 @@ test('renders the unconfigured address form', async () => {
 test('renders disconnected and expired connection states', async () => {
   const disconnected = await mountState('disconnected')
   assert.ok(disconnected.find({ text: '连接账号' }))
-  assert.ok(disconnected.find({ text: '尚未连接' }))
+  assert.ok(disconnected.find({ text: '将在浏览器里确认这台电脑。' }))
   assert.deepEqual(disconnected.errors, [])
   await disconnected.unmount()
 
   const expired = await mountState('expired')
   assert.ok(expired.find({ text: '连接已失效，请重新连接' }))
-  assert.ok(expired.find({ text: '连接账号' }))
+  assert.ok(expired.find({ text: '重新连接' }))
   assert.deepEqual(expired.errors, [])
   assert.deepEqual(expired.refusals, [])
   await expired.unmount()
+})
+
+test('opens the browser confirmation from the same connect click', async () => {
+  const snapshot = await createMockSnapshot('disconnected')
+  const openedUrls: string[] = []
+  const host = mockHost({
+    requests: {
+      'taskboard.getState': () => snapshot,
+      'connection.begin': () => ({
+        authorizationUrl: 'https://taskboard.example.com/client/connect?port=49161',
+        snapshot: {
+          ...snapshot,
+          connection: { phase: 'waiting', message: '等待浏览器确认…' }
+        }
+      }),
+      'connection.cancel': () => ({
+        ...snapshot,
+        connection: { phase: 'cancelled', message: '已取消连接' }
+      })
+    },
+    results: {
+      'shell.openExternal': (params: { url: string }) => {
+        openedUrls.push(params.url)
+        return { opened: true }
+      }
+    }
+  })
+  const current = await mount(panel, { host })
+
+  await current.press({ role: 'button', text: '连接账号' })
+  assert.deepEqual(openedUrls, [
+    'https://taskboard.example.com/client/connect?port=49161'
+  ])
+  assert.ok(current.find({ text: '等待浏览器确认…' }))
+  assert.ok(current.find({ text: '取消' }))
+  assert.deepEqual(current.refusals, [])
+  await current.unmount()
+})
+
+test('cancels the browser flow when openExternal does not open', async () => {
+  const snapshot = await createMockSnapshot('disconnected')
+  const host = mockHost({
+    requests: {
+      'taskboard.getState': () => snapshot,
+      'connection.begin': () => ({
+        authorizationUrl: 'https://taskboard.example.com/client/connect?port=49161',
+        snapshot: {
+          ...snapshot,
+          connection: { phase: 'waiting', message: '等待浏览器确认…' }
+        }
+      }),
+      'connection.cancel': () => ({
+        ...snapshot,
+        connection: { phase: 'cancelled', message: '已取消连接' }
+      })
+    },
+    results: {
+      'shell.openExternal': () => ({ opened: false, reason: 'cancelled' })
+    }
+  })
+  const current = await mount(panel, { host })
+  await current.press({ role: 'button', text: '连接账号' })
+  assert.ok(current.find({ text: '已取消连接' }))
+  assert.deepEqual(current.refusals, [])
+  await current.unmount()
+})
+
+test('renders address, connection, keychain, refresh, and overview-unavailable states', async () => {
+  const addressError = await createMockSnapshot('unconfigured')
+  addressError.addressError = '不是工单板平台：健康检查返回的不是 JSON'
+  const addressHost = mockHost({
+    requests: { 'taskboard.getState': () => addressError }
+  })
+  const addressPanel = await mount(panel, { host: addressHost })
+  assert.ok(addressPanel.find({ text: /健康检查返回的不是 JSON/ }))
+  assert.deepEqual(addressPanel.errors, [])
+  await addressPanel.unmount()
+
+  const failed = await createMockSnapshot('disconnected')
+  failed.connection = {
+    phase: 'failed',
+    message: '连接失败：回调端口不可用'
+  }
+  const failedHost = mockHost({
+    requests: { 'taskboard.getState': () => failed }
+  })
+  const failedPanel = await mount(panel, { host: failedHost })
+  assert.ok(failedPanel.find({ text: '连接失败：回调端口不可用' }))
+  await failedPanel.unmount()
+
+  const noKeychain = await createMockSnapshot('disconnected')
+  noKeychain.secretsAvailable = false
+  const noKeychainHost = mockHost({
+    requests: { 'taskboard.getState': () => noKeychain }
+  })
+  const noKeychainPanel = await mount(panel, { host: noKeychainHost })
+  assert.ok(noKeychainPanel.find({ text: '这台电脑没有可用的密钥存储，无法保存凭证' }))
+  assert.deepEqual(noKeychainPanel.refusals, [])
+  await noKeychainPanel.unmount()
+
+  const connected = await createMockSnapshot('connected')
+  assert.ok(connected.overview)
+  connected.overview = {
+    ...connected.overview,
+    inbox: null,
+    collaborating: null,
+    waiting: null
+  }
+  connected.refreshError = '刷新失败：连接超时'
+  const connectedHost = mockHost({
+    requests: { 'taskboard.getState': () => connected }
+  })
+  const connectedPanel = await mount(panel, { host: connectedHost })
+  assert.ok(connectedPanel.find({ text: '刷新失败：连接超时' }))
+  assert.ok(connectedPanel.findAll({ text: '概览接口尚未开放（等平台升级）' }).length >= 1)
+  assert.deepEqual(connectedPanel.errors, [])
+  await connectedPanel.unmount()
+})
+
+test('shows the address-change and disconnect menu actions', async () => {
+  const snapshot = await createMockSnapshot('connected')
+  const host = mockHost({
+    requests: {
+      'taskboard.getState': () => snapshot,
+      'connection.disconnect': () => ({
+        ...snapshot,
+        state: 'disconnected',
+        overview: null,
+        notifications: []
+      })
+    }
+  })
+  const current = await mount(panel, { host })
+  await current.press({ label: '工单板菜单' })
+  assert.ok(current.find({ text: '更改平台地址' }))
+  assert.ok(current.find({ text: '断开连接' }))
+  await current.press({ text: '更改平台地址' })
+  assert.ok(current.find({ label: '平台地址' }))
+  assert.deepEqual(current.errors, [])
+  await current.unmount()
 })

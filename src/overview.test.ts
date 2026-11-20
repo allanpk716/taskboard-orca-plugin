@@ -69,6 +69,9 @@ test('builds the overview from the four aggregate API responses', () => {
     unreadNotifications: unread
   })
 
+  assert.ok(overview.inbox)
+  assert.ok(overview.collaborating)
+  assert.ok(overview.waiting)
   assert.equal(overview.inbox.by_reason.new, 1)
   assert.equal(overview.inbox.by_reason.delivered, 2)
   assert.equal(overview.inbox.by_reason.assignee_replied, 0)
@@ -82,6 +85,21 @@ test('builds the overview from the four aggregate API responses', () => {
   assert.equal(overview.collaborating.total, 5)
   assert.equal(overview.collaborating.unread, 2)
   assert.equal(overview.waiting.total, 4)
+  assert.equal(overview.unread_notifications, 3)
+})
+
+test('keeps overview parts unavailable when the client scope gets 403', () => {
+  const overview = buildOverview({
+    platformUrl: 'https://taskboard.example.com',
+    inbox: null,
+    waiting: null,
+    collaborating: null,
+    unreadNotifications: unread
+  })
+
+  assert.equal(overview.inbox, null)
+  assert.equal(overview.collaborating, null)
+  assert.equal(overview.waiting, null)
   assert.equal(overview.unread_notifications, 3)
 })
 

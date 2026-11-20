@@ -33,6 +33,7 @@ import type { TaskboardSnapshot } from './protocol'
 
 const snapshot = atom<TaskboardSnapshot | null>(null)
 const addressDraft = atom('')
+const addressEditing = atom(false)
 const menuOpen = atom(false)
 
 const NOTIFICATION_REASON_LABELS: Record<string, string> = {
@@ -55,8 +56,12 @@ const NOTIFICATION_REASON_LABELS: Record<string, string> = {
   backup_recovered: '备份恢复'
 }
 
+const OVERVIEW_UNAVAILABLE = '概览接口尚未开放（等平台升级）'
+
 function notificationTitle(item: TaskboardNotification): string {
-  return item.ticket ? `${item.ticket.number} · ${item.ticket.title}` : item.text || item.summary
+  return item.ticket
+    ? `${item.ticket.number} · ${item.ticket.title}`
+    : item.text || item.summary
 }
 
 function notificationReason(item: TaskboardNotification): string {
@@ -64,6 +69,7 @@ function notificationReason(item: TaskboardNotification): string {
 }
 
 function inboxTotal(overview: Overview): number {
+  if (overview.inbox === null) return 0
   return Object.values(overview.inbox.by_reason).reduce(
     (total, count) => total + count,
     0
@@ -71,9 +77,10 @@ function inboxTotal(overview: Overview): number {
 }
 
 function overviewCard(overview: Overview) {
-  const reasons = Object.entries(overview.inbox.by_reason).filter(
-    ([, count]) => count > 0
-  )
+  const reasons =
+    overview.inbox === null
+      ? []
+      : Object.entries(overview.inbox.by_reason).filter(([, count]) => count > 0)
 
   return (
     <Card>
@@ -82,12 +89,21 @@ function overviewCard(overview: Overview) {
         <KeyValue
           label="概览计数"
           items={[
-            { label: '收件箱', value: inboxTotal(overview) },
+            {
+              label: '收件箱',
+              value: overview.inbox === null ? OVERVIEW_UNAVAILABLE : inboxTotal(overview)
+            },
             {
               label: '协作中',
-              value: `${overview.collaborating.unread} 未读 / ${overview.collaborating.total}`
+              value:
+                overview.collaborating === null
+                  ? OVERVIEW_UNAVAILABLE
+                  : `${overview.collaborating.unread} 未读 / ${overview.collaborating.total}`
             },
-            { label: '在等他', value: overview.waiting.total },
+            {
+              label: '在等他',
+              value: overview.waiting === null ? OVERVIEW_UNAVAILABLE : overview.waiting.total
+            },
             {
               label: '通知未读',
               value: overview.unread_notifications,
@@ -177,10 +193,10 @@ function inboxRow(item: OverviewInboxItem) {
   )
 }
 
-async function markAllRead(snapshot: TaskboardSnapshot): Promise<void> {
-  if (snapshot.latestNotificationId === null) return
+async function markAllRead(current: TaskboardSnapshot): Promise<void> {
+  if (current.latestNotificationId === null) return
   await plugin.request('notifications.markAllRead', {
-    up_to: snapshot.latestNotificationId
+    up_to: current.latestNotificationId
   })
 }
 
@@ -209,6 +225,46 @@ function Header({ platformUrl }: { platformUrl: string }) {
   )
 }
 
+function SecretsWarning({ current }: { current: TaskboardSnapshot }) {
+  if (current.secretsAvailable) return null
+  return (
+    <Callout tone="warning" icon="warning">
+      这台电脑没有可用的密钥存储，无法保存凭证
+    </Callout>
+  )
+}
+
+function AddressCard({ current }: { current: TaskboardSnapshot }) {
+  return (
+    <Card title="配置平台地址">
+      <Stack gap="sm">
+        <Input
+          key="platform-url"
+          label="平台地址"
+          value={read(addressDraft)}
+          placeholder="https://taskboard.example.com"
+          onChange={(value) => set(addressDraft, value)}
+          onSubmit={() => saveAddress()}
+        />
+        {current.addressError !== null ? (
+          <Text key="platform-address-error" tone="danger">
+            {current.addressError}
+          </Text>
+        ) : null}
+        <Row justify="end">
+          <Button
+            key="save-platform-url"
+            onPress={() => saveAddress()}
+            disabled={read(addressDraft).trim() === ''}
+          >
+            保存
+          </Button>
+        </Row>
+      </Stack>
+    </Card>
+  )
+}
+
 export function setup(ctx: PanelContext): void {
   ctx.subscriptions.push(
     plugin.on('taskboard.changed', ({ snapshot: next }) => {
@@ -223,38 +279,86 @@ async function saveAddress(): Promise<void> {
     platformUrl: read(addressDraft)
   })
   set(snapshot, next)
+  if (next.state !== 'unconfigured') set(addressEditing, false)
 }
 
 async function connect(): Promise<void> {
-  const next = await plugin.request('connection.connect')
-  set(snapshot, next)
+  const result = await plugin.request('connection.begin')
+  set(snapshot, result.snapshot)
+  if (result.authorizationUrl === null) return
+
+  const opened = await shell.openExternal(result.authorizationUrl)
+  if (!opened.opened) {
+    set(snapshot, await plugin.request('connection.cancel'))
+  }
+}
+
+async function cancelConnection(): Promise<void> {
+  set(snapshot, await plugin.request('connection.cancel'))
 }
 
 async function disconnect(): Promise<void> {
   set(menuOpen, false)
-  const next = await plugin.request('connection.disconnect')
-  set(snapshot, next)
+  set(snapshot, await plugin.request('connection.disconnect'))
+}
+
+function ConnectionPanel({
+  snapshot: current,
+  reconnect
+}: {
+  snapshot: TaskboardSnapshot
+  reconnect: boolean
+}) {
+  const waiting = current.connection.phase === 'waiting'
+  return (
+    <Card>
+      <Stack gap="sm">
+        <Heading level={3}>{reconnect ? '重新连接账号' : '连接账号'}</Heading>
+        {waiting ? (
+          <>
+            <Text>等待浏览器确认…</Text>
+            <Row justify="end">
+              <Button key="cancel-connection" variant="ghost" onPress={() => cancelConnection()}>
+                取消
+              </Button>
+            </Row>
+          </>
+        ) : (
+          <>
+            <Text>将在浏览器里确认这台电脑。</Text>
+            <Row justify="end">
+              <Button
+                key={reconnect ? 'reconnect-account' : 'connect-account'}
+                onPress={() => connect()}
+                disabled={!current.secretsAvailable}
+              >
+                {reconnect ? '重新连接' : '连接账号'}
+              </Button>
+            </Row>
+          </>
+        )}
+        {current.connection.phase === 'failed' && current.connection.message !== null ? (
+          <Text tone="danger">{current.connection.message}</Text>
+        ) : null}
+        {current.connection.phase === 'cancelled' && current.connection.message !== null ? (
+          <Text muted>{current.connection.message}</Text>
+        ) : null}
+        {current.connection.phase === 'timeout' && current.connection.message !== null ? (
+          <Text tone="danger">{current.connection.message}</Text>
+        ) : null}
+      </Stack>
+    </Card>
+  )
 }
 
 function UnconfiguredPanel() {
+  const current = read(snapshot)
+  if (current === null) return null
   return (
     <Stack gap="md">
       <Header platformUrl="" />
-      <Card title="配置平台地址">
-        <Stack gap="sm">
-          <Input
-            key="platform-url"
-            label="平台地址"
-            value={read(addressDraft)}
-            placeholder="https://taskboard.example.com"
-            onChange={(value) => set(addressDraft, value)}
-            onSubmit={() => saveAddress()}
-          />
-          <Button key="save-platform-url" onPress={() => saveAddress()}>
-            保存
-          </Button>
-        </Stack>
-      </Card>
+      <SecretsWarning current={current} />
+      <AddressCard current={current} />
     </Stack>
   )
 }
@@ -263,15 +367,14 @@ function DisconnectedPanel({ snapshot: current }: { snapshot: TaskboardSnapshot 
   return (
     <Stack gap="md">
       <Header platformUrl={current.platformUrl} />
-      <Card>
-        <Stack gap="sm">
-          <Heading level={3}>尚未连接</Heading>
-          <Text>填写了平台地址，还没有连接账号。</Text>
-          <Button key="connect-account" onPress={() => connect()}>
-            连接账号
-          </Button>
-        </Stack>
-      </Card>
+      {read(addressEditing) ? (
+        <AddressCard current={current} />
+      ) : (
+        <>
+          <SecretsWarning current={current} />
+          <ConnectionPanel snapshot={current} reconnect={false} />
+        </>
+      )}
     </Stack>
   )
 }
@@ -280,77 +383,105 @@ function ExpiredPanel({ snapshot: current }: { snapshot: TaskboardSnapshot }) {
   return (
     <Stack gap="md">
       <Header platformUrl={current.platformUrl} />
-      <Callout tone="warning" icon="warning">
-        <Stack gap="sm">
-          <Heading level={3}>连接已失效，请重新连接</Heading>
-          <Text>需要重新连接账号后才能刷新提醒和概览。</Text>
-          <Button key="reconnect-account" onPress={() => connect()}>
-            连接账号
-          </Button>
-        </Stack>
-      </Callout>
+      {read(addressEditing) ? (
+        <AddressCard current={current} />
+      ) : (
+        <>
+          <SecretsWarning current={current} />
+          <Callout tone="warning" icon="warning">
+            <Stack gap="sm">
+              <Heading level={3}>连接已失效，请重新连接</Heading>
+              <Text>需要重新连接账号后才能刷新提醒和概览。</Text>
+            </Stack>
+          </Callout>
+          <ConnectionPanel snapshot={current} reconnect />
+        </>
+      )}
     </Stack>
   )
 }
 
 function ConnectedPanel({ snapshot: current }: { snapshot: TaskboardSnapshot }) {
-  if (!current.overview) {
-    return (
-      <Stack gap="md">
-        <Header platformUrl={current.platformUrl} />
-        <Spinner label="正在加载工单板" />
-      </Stack>
-    )
-  }
-
-  const hasUnreadNotifications = current.notifications.some(
-    (item) => item.read_at === null
-  )
-
   return (
     <Stack gap="md">
       <Header platformUrl={current.platformUrl} />
       {read(menuOpen) ? (
         <Card title="菜单">
-          <Button key="disconnect-account" variant="ghost" onPress={() => disconnect()}>
-            断开连接
-          </Button>
+          <Stack gap="sm">
+            <Button
+              key="change-platform-url"
+              variant="ghost"
+              onPress={() => {
+                set(menuOpen, false)
+                set(addressDraft, current.platformUrl)
+                set(addressEditing, true)
+              }}
+            >
+              更改平台地址
+            </Button>
+            <Button key="disconnect-account" variant="ghost" onPress={() => disconnect()}>
+              断开连接
+            </Button>
+          </Stack>
         </Card>
       ) : null}
-      {overviewCard(current.overview)}
-      <Card>
-        <Stack gap="sm">
-          <Heading level={3}>通知</Heading>
-          {hasUnreadNotifications ? (
-            <Row justify="end">
-              <Button
-                key="mark-all-notifications-read"
-                size="sm"
-                variant="ghost"
-                onPress={() => markAllRead(current)}
-              >
-                全部已读
-              </Button>
-            </Row>
+      {read(addressEditing) ? (
+        <AddressCard current={current} />
+      ) : (
+        <>
+          {current.refreshError !== null ? (
+            <Callout tone="warning" icon="warning">
+              {current.refreshError}
+            </Callout>
           ) : null}
-          <List label="最近通知">
-            {current.notifications.map((item) => notificationRow(item))}
-          </List>
-        </Stack>
-      </Card>
-      <Card>
-        <Heading level={3}>收件箱</Heading>
-        <List label="收件箱工单">
-          {current.overview.inbox.items.map((item) => inboxRow(item))}
-        </List>
-      </Card>
+          {current.overview === null ? (
+            current.refreshError === null ? (
+              <Spinner label="正在加载工单板" />
+            ) : null
+          ) : (
+            <>
+              {overviewCard(current.overview)}
+              <Card>
+                <Stack gap="sm">
+                  <Heading level={3}>通知</Heading>
+                  {current.notifications.some((item) => item.read_at === null) ? (
+                    <Row justify="end">
+                      <Button
+                        key="mark-all-notifications-read"
+                        size="sm"
+                        variant="ghost"
+                        onPress={() => markAllRead(current)}
+                      >
+                        全部已读
+                      </Button>
+                    </Row>
+                  ) : null}
+                  <List label="最近通知">
+                    {current.notifications.map((item) => notificationRow(item))}
+                  </List>
+                </Stack>
+              </Card>
+              <Card>
+                <Heading level={3}>收件箱</Heading>
+                {current.overview.inbox === null ? (
+                  <Text muted>{OVERVIEW_UNAVAILABLE}</Text>
+                ) : (
+                  <List label="收件箱工单">
+                    {current.overview.inbox.items.map((item) => inboxRow(item))}
+                  </List>
+                )}
+              </Card>
+            </>
+          )}
+        </>
+      )}
     </Stack>
   )
 }
 
 export default function Panel() {
   const current = read(snapshot)
-  if (!current) return <Spinner label="正在加载工单板" />
+  if (current === null) return <Spinner label="正在加载工单板" />
   if (current.state === 'unconfigured') return <UnconfiguredPanel />
   if (current.state === 'disconnected') return <DisconnectedPanel snapshot={current} />
   if (current.state === 'expired') return <ExpiredPanel snapshot={current} />

@@ -124,9 +124,9 @@ export interface Overview {
   inbox: {
     by_reason: Record<InboxReasonCode, number>
     items: OverviewInboxItem[]
-  }
-  collaborating: { total: number; unread: number }
-  waiting: { total: number }
+  } | null
+  collaborating: { total: number; unread: number } | null
+  waiting: { total: number } | null
   unread_notifications: number
 }
 
@@ -136,9 +136,9 @@ export interface TaskboardNotification extends RawNotificationItem {
 
 export interface OverviewInput {
   platformUrl: string
-  inbox: RawInboxResponse
-  waiting: RawInboxResponse
-  collaborating: RawTicketListResponse
+  inbox: RawInboxResponse | null
+  waiting: RawInboxResponse | null
+  collaborating: RawTicketListResponse | null
   unreadNotifications: RawUnreadNotificationsResponse
 }
 
@@ -163,33 +163,45 @@ export function inboxReason(code: string): InboxReasonCode {
 }
 
 export function buildOverview(input: OverviewInput): Overview {
-  const byReason = Object.fromEntries(
-    INBOX_REASON_CODES.map((code) => [code, 0])
-  ) as Record<InboxReasonCode, number>
+  const byReason =
+    input.inbox === null
+      ? null
+      : (Object.fromEntries(
+          INBOX_REASON_CODES.map((code) => [code, 0])
+        ) as Record<InboxReasonCode, number>)
 
-  for (const item of input.inbox.items) {
-    byReason[inboxReason(item.reason_code)] += 1
+  if (byReason !== null && input.inbox !== null) {
+    for (const item of input.inbox.items) {
+      byReason[inboxReason(item.reason_code)] += 1
+    }
   }
 
   return {
-    inbox: {
-      by_reason: byReason,
-      items: input.inbox.items.map((item) => ({
-        number: item.number,
-        title: item.title,
-        url: ticketUrl(input.platformUrl, item.number),
-        reason: item.reason,
-        reason_code: inboxReason(item.reason_code),
-        trigger: item.trigger,
-        last_reply_at: item.last_reply_at,
-        created_at: item.created_at
-      }))
-    },
-    collaborating: {
-      total: input.collaborating.total,
-      unread: input.collaborating.items.filter((item) => item.unread).length
-    },
-    waiting: { total: input.waiting.count },
+    inbox:
+      input.inbox === null || byReason === null
+        ? null
+        : {
+            by_reason: byReason,
+            items: input.inbox.items.map((item) => ({
+              number: item.number,
+              title: item.title,
+              url: ticketUrl(input.platformUrl, item.number),
+              reason: item.reason,
+              reason_code: inboxReason(item.reason_code),
+              trigger: item.trigger,
+              last_reply_at: item.last_reply_at,
+              created_at: item.created_at
+            }))
+          },
+    collaborating:
+      input.collaborating === null
+        ? null
+        : {
+            total: input.collaborating.total,
+            unread: input.collaborating.items.filter((item) => item.unread)
+              .length
+          },
+    waiting: input.waiting === null ? null : { total: input.waiting.count },
     unread_notifications: input.unreadNotifications.unread_count
   }
 }

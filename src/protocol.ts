@@ -8,21 +8,44 @@ export type ConnectionState =
   | 'expired'
   | 'connected'
 
+export type ConnectionPhase =
+  | 'idle'
+  | 'waiting'
+  | 'succeeded'
+  | 'failed'
+  | 'timeout'
+  | 'cancelled'
+
+export interface ConnectionStatus {
+  phase: ConnectionPhase
+  message: string | null
+}
+
 export interface TaskboardSnapshot {
   state: ConnectionState
   platformUrl: string
   overview: Overview | null
   notifications: TaskboardNotification[]
   latestNotificationId: number | null
+  unreadNotificationCount: number | null
+  secretsAvailable: boolean
+  addressError: string | null
+  connection: ConnectionStatus
+  refreshError: string | null
+}
+
+export interface ConnectionBeginResult {
+  authorizationUrl: string | null
+  snapshot: TaskboardSnapshot
 }
 
 declare module 'orca' {
   interface PluginRequests {
     'taskboard.getState': { output: TaskboardSnapshot }
     'config.save': { input: { platformUrl: string }; output: TaskboardSnapshot }
-    'connection.connect': { output: TaskboardSnapshot }
+    'connection.begin': { output: ConnectionBeginResult }
+    'connection.cancel': { output: TaskboardSnapshot }
     'connection.disconnect': { output: TaskboardSnapshot }
-    'debug.setState': { input: { state: ConnectionState }; output: TaskboardSnapshot }
     'notifications.markRead': { input: { ids: number[] }; output: TaskboardSnapshot }
     'notifications.markAllRead': { input: { up_to: number }; output: TaskboardSnapshot }
   }

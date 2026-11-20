@@ -291,7 +291,12 @@ export async function createMockSnapshot(
       platformUrl: state === 'unconfigured' ? '' : MOCK_PLATFORM_URL,
       overview: null,
       notifications: [],
-      latestNotificationId: null
+      latestNotificationId: null,
+      unreadNotificationCount: null,
+      secretsAvailable: true,
+      addressError: null,
+      connection: { phase: 'idle', message: null },
+      refreshError: null
     }
   }
 
@@ -315,6 +320,11 @@ export async function createMockSnapshot(
       unreadNotifications: unread
     }),
     notifications: buildNotifications(MOCK_PLATFORM_URL, notificationList),
-    latestNotificationId: unread.latest_id
+    latestNotificationId: unread.latest_id,
+    unreadNotificationCount: unread.unread_count,
+    secretsAvailable: true,
+    addressError: null,
+    connection: { phase: 'idle', message: null },
+    refreshError: null
   }
 }

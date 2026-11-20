@@ -1,20 +1,45 @@
 import { defineCheck } from 'orca/testing'
+import { createMockSnapshot } from './mock'
 
 export default defineCheck({
-  connected: {},
-  unconfigured: {
-    storage: { 'taskboard.connectionState': 'unconfigured' }
+  connected: {
+    requests: {
+      'taskboard.getState': () => createMockSnapshot('connected')
+    }
   },
+  unconfigured: {},
   disconnected: {
-    storage: {
-      'taskboard.connectionState': 'disconnected',
-      'taskboard.platformUrl': 'https://taskboard.example.com'
+    requests: {
+      'taskboard.getState': () => createMockSnapshot('disconnected')
     }
   },
   expired: {
-    storage: {
-      'taskboard.connectionState': 'expired',
-      'taskboard.platformUrl': 'https://taskboard.example.com'
+    requests: {
+      'taskboard.getState': () => createMockSnapshot('expired')
+    }
+  },
+  waiting: {
+    requests: {
+      'taskboard.getState': async () => ({
+        ...(await createMockSnapshot('disconnected')),
+        connection: { phase: 'waiting', message: '等待浏览器确认…' }
+      })
+    }
+  },
+  overviewUnavailable: {
+    requests: {
+      'taskboard.getState': async () => {
+        const snapshot = await createMockSnapshot('connected')
+        if (snapshot.overview !== null) {
+          snapshot.overview = {
+            ...snapshot.overview,
+            inbox: null,
+            collaborating: null,
+            waiting: null
+          }
+        }
+        return snapshot
+      }
     }
   }
 })
