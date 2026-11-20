@@ -207,6 +207,7 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
 
   async function runStream(generation: number): Promise<void> {
     const token = stored.clientToken
+    fileLog('diag', `runStream enter token=${token !== null ? '有' : '无'} state=${probe.state} gen=${generation}/${streamGeneration} closed=${closed}`)
     if (token === null || probe.state !== 'connected') return
 
     let reconnectAttempt = 0
@@ -227,6 +228,7 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
           headers,
           signal: controller.signal
         })
+        fileLog('diag', `stream fetch status=${response.status} body=${response.body !== null}`)
         if (response.status === 401) {
           expire()
           return
@@ -360,10 +362,12 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
   }
 
   function startStream(): void {
+    fileLog('diag', `startStream enter state=${probe.state} controller=${streamController !== null} closed=${closed}`)
     if (probe.state !== 'connected' || streamController !== null || closed) return
     streamGeneration += 1
     void runStream(streamGeneration).catch((error: unknown) => {
       log.error(`[taskboard-dsh] 通知流异常退出：${errorMessage(error)}`)
+      fileLog('diag', `runStream outer-catch ${errorMessage(error)}`)
     })
   }
 
@@ -636,6 +640,7 @@ export function apply(ctx: HostContext, config: Record<string, unknown> = {}): v
 
   if (typeof ctx.effect === 'function') {
     ctx.effect(() => {
+      fileLog('disposed', `插件 fiber 被清理 state=${probe.state}`)
       closed = true
       stopStream()
       pendingConnectionAbort?.abort()
