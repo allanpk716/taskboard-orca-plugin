@@ -1,0 +1,25 @@
+{
+  "name": "taskboard-dsh",
+  "version": "0.1.0-probe",
+  "private": true,
+  "type": "module",
+  "description": "工单板的 DSH 插件（探针：连接账号 + SSE 未读 + 左栏面板计数 + 系统通知验证）",
+  "main": "index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

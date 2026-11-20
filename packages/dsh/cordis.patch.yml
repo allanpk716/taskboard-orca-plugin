@@ -1,0 +1,8 @@
+# taskboard-dsh 的 bundle patch——激活声明（ferryman-dsh 同款形态）。
+# 安装：dsh plugin --profile <name> add <本目录路径>
+#   → profile 的 package.json 长出 "taskboard-dsh": "link:/路径" 依赖并追加 dsh.profile.bundles
+- insert:
+    - id: taskboard-dsh
+      name: taskboard-dsh
+      config:
+        platformUrl: https://taskboard.urithub.com
